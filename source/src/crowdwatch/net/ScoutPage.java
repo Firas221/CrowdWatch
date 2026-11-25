@@ -8,6 +8,10 @@ package crowdwatch.net;
  * the walking route. On a new task, SOS or evacuation order the phone vibrates and beeps.
  * Buttons: Acknowledge, On scene, Resolved, and a red SOS button that sends the unit's own
  * location as an SOS.
+ * <p>
+ * The key field takes either the shared scout key or the phone's own device code (issued by an
+ * officer for one unit; with a device code the phone can only act on that unit's tasks). The
+ * page can be switched to Arabic (right to left) with the button in its header (see i18n.js).
  */
 final class ScoutPage {
     // utility class, no instances
@@ -36,8 +40,9 @@ input,button{font:inherit;padding:12px;border-radius:8px;border:0;width:100%%;bo
 #look div{background:#4a2a6b;border-radius:10px;padding:12px;margin:8px 0;font-size:16px}.found{background:#7c3aed;color:#fff;font-weight:700}
 #foundTask{display:none}
 #map{display:none;margin:8px 0}#map svg{width:100%%;height:auto;border-radius:10px;background:#0b1322}
-</style></head><body>
-<header><span id='who'>CrowdWatch Scout</span><span id='state'></span></header>
+html[dir=rtl] body{font-family:Tahoma,'Noto Sans Arabic',system-ui,sans-serif}
+</style><script src='/i18n.js'></script></head><body>
+<header><span id='who'>CrowdWatch Scout</span><span id='state'></span><button data-lang-btn style='width:auto;padding:4px 10px;margin:0;background:#26394d;color:#fff'>العربية</button></header>
 <div id='setup'><p>Enter your unit ID (and the scout key you were given) to start.</p><input id='uid' placeholder='Unit ID, e.g. A03' autocapitalize='characters'>%s
 <button class='ack' onclick='start()'>Start</button></div>
 <div id='main'>
@@ -56,19 +61,20 @@ input,button{font:inherit;padding:12px;border-radius:8px;border:0;width:100%%;bo
 <script>
 let unit=localStorage.getItem('cwUnit'),key=localStorage.getItem('cwKey')||'',task=null,seen=localStorage.getItem('cwSeen')||'';
 const $=id=>document.getElementById(id);
+const T=s=>window.cwT?cwT(s):s;
 function start(){unit=$('uid').value.trim().toUpperCase();if(!unit)return;localStorage.setItem('cwUnit',unit);
  if($('key')){key=$('key').value;localStorage.setItem('cwKey',key);}show();}
 function show(){$('setup').style.display='none';$('main').style.display='block';$('who').textContent='Unit '+unit;loadMap().then(poll);setInterval(poll,3000);}
 function alarm(){try{navigator.vibrate&&navigator.vibrate([400,150,400,150,400]);const c=new AudioContext(),o=c.createOscillator();o.frequency.value=880;o.connect(c.destination);o.start();setTimeout(()=>{o.stop();c.close()},700);}catch(e){}}
 async function poll(){try{
  const r=await fetch('/api/unit?id='+encodeURIComponent(unit),{headers:{'X-Api-Key':key}});
- if(r.status==401||r.status==403){$('out').textContent='Key not accepted: tap Change unit and enter the scout key.';return;}
+ if(r.status==401||r.status==403){$('out').textContent=T('Key not accepted: tap Change unit and enter the scout key.');return;}
  const u=await r.json();
  if(!u.ok){$('out').textContent=u.message;return;}
- $('who').textContent=u.id+' - '+u.name;$('state').textContent=u.status+' @ '+u.area;
+ $('who').textContent=u.id+' - '+u.name;$('state').textContent=T(u.status)+' @ '+u.area;
  task=u.task;const t=$('task');
- if(task){t.className=task.priority;t.innerHTML='<b>'+(task.category=='SOS'?'SOS ':'')+'I'+task.id+' '+task.priority+'</b><br>'+esc(task.label)+'<br>at <b>'+esc(task.area)+'</b> '+esc(task.areaName)
-  +'<br>Route: '+esc(task.route)+'<br>'+(task.details?'Details: '+esc(task.details)+'<br>':'')+'Status: '+task.status+(task.acknowledged?' (acknowledged)':' - <b>PLEASE ACKNOWLEDGE</b>');}
+ if(task){t.className=task.priority;t.innerHTML='<b>'+(task.category=='SOS'?T('SOS')+' ':'')+'I'+task.id+' '+T(task.priority)+'</b><br>'+esc(task.label)+'<br>'+T('Where')+': <b>'+esc(task.area)+'</b> '+esc(task.areaName)
+  +'<br>'+T('Route:')+' '+esc(T(task.route))+'<br>'+(task.details?T('Details:')+' '+esc(task.details)+'<br>':'')+T('Status:')+' '+T(task.status)+(task.acknowledged?' '+T('(acknowledged)'):' - <b>'+T('PLEASE ACKNOWLEDGE')+'</b>');}
  else{t.className='none';t.textContent='No task. Stand by.';}
  $('foundTask').style.display=u.lostTask?'block':'none';
  drawMap(u);
@@ -84,7 +90,7 @@ async function post(path,data){const b=new URLSearchParams(data);if(key)b.set('k
  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b});
  let j;try{j=await r.json();}catch(e){j={message:'HTTP '+r.status};}$('out').textContent=j.message;poll();}
 function act(path){if(path=='/api/ack')return post(path,{unit});if(!task){$('out').textContent='No task.';return;}post(path,{id:task.id});}
-function resolve(){if(!task){$('out').textContent='No task.';return;}const n=prompt('Closing note (optional)')??'';post('/api/resolve',{id:task.id,note:n});}
+function resolve(){if(!task){$('out').textContent='No task.';return;}const n=prompt(T('Closing note (optional)'))??'';post('/api/resolve',{id:task.id,note:n});}
 let layout=null,mapUrl=null;
 async function loadMap(){try{const r=await fetch('/api/layout',{headers:{'X-Api-Key':key}});layout=await r.json();
  if(layout.map&&layout.image){const b=await fetch('/api/map',{headers:{'X-Api-Key':key}});if(b.ok)mapUrl=URL.createObjectURL(await b.blob());}}catch(e){layout=null;}}
@@ -103,11 +109,11 @@ function drawMap(u){const el=$('map');if(!layout||!layout.map||!u.task){el.style
   if(t||me)s+='<text x="'+(p.x+8)+'" y="'+(p.y+28)+'" font-size="26" font-weight="700" fill="#fff">'+(t?'TASK ':'YOU ')+p.id+'</text>';});
  if(pts.length>1)s+='<polyline points="'+pts.map(q=>q[0]+','+q[1]).join(' ')+'" fill="none" stroke="#ffd166" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="22 14"/>';
  el.innerHTML=s+'</svg>';el.style.display='block';}
-function found(id){if(!confirm('Mark I'+id+' as FOUND here? Stay with the person.'))return;post('/api/found',{id,unit});}
-function foundPerson(){const d=prompt('Describe the person you found (age, clothes, language)');if(!d)return;const c=prompt('Their contact or companion (optional)')??'';post('/api/foundperson',{unit,area:'',details:d,contact:c});}
-function sos(){if(!confirm('Send SOS from your position?'))return;const t=prompt('What is happening? (optional)')??'';post('/api/sos',{unit,text:t});}
+function found(id){if(!confirm('I'+id+' - '+T('Person FOUND (I am with them)')+'? '+T('Stay with the person.')))return;post('/api/found',{id,unit});}
+function foundPerson(){const d=prompt(T('Describe the person you found (age, clothes, language)'));if(!d)return;const c=prompt(T('Their contact or companion (optional)'))??'';post('/api/foundperson',{unit,area:'',details:d,contact:c});}
+function sos(){if(!confirm(T('Send SOS from your position?')))return;const t=prompt(T('What is happening? (optional)'))??'';post('/api/sos',{unit,text:t});}
 if(unit)show();
 </script></body></html>
-""".formatted(needsKey ? "<input id='key' type='password' placeholder='Scout key'>" : "");
+""".formatted(needsKey ? "<input id='key' type='password' placeholder='Device code or scout key' autocapitalize='characters'>" : "");
     }
 }

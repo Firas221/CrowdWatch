@@ -1,0 +1,24 @@
+# Line endings: Windows scripts keep CRLF, shell scripts LF, other text is normalised.
+* text=auto
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.sh    text eol=lf
+*.java  text eol=lf
+*.venue text eol=lf
+*.js    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.yml   text eol=lf
+# binary files: never changed by git
+*.jar  binary
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.docx binary
+*.zip  binary
+*.p12  binary
+*.dll  binary
+*.so   binary
+*.dylib binary

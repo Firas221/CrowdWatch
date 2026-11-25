@@ -46,6 +46,15 @@ public class ApiServer {
     private final String scoutKey;
     private final RateLimiter limiter;
     private final ReplyCache cache = new ReplyCache();
+    // personal logins, device codes and the audit log; null = keys only (as in earlier versions)
+    private volatile Accounts accounts;
+    // the caller when the control key is used (or the server is open): full rights
+    private static final Accounts.Who SYSTEM = accountsWho("control key", Accounts.Role.ADMIN, null);
+    // what each role may change (each role also has the rights of the roles below it); GETs need VIEWER
+    private static final String[] OPERATOR_POSTS = { "POST /api/occupancy", "POST /api/move", "POST /api/incidents", "POST /api/resolve", "POST /api/onscene",
+        "POST /api/ack", "POST /api/sos", "POST /api/found", "POST /api/foundperson", "POST /api/reassign", "POST /api/escalate", "POST /api/alarm" };
+    private static final String[] ADMIN_ONLY = { "GET /api/users", "POST /api/users" };
+    private static final String[] OFFICER_GETS = { "GET /api/audit" };
     // requests that reached the monitor take turns in arrival order (fair), so none waits far longer than the rest
     private final java.util.concurrent.Semaphore turns = new java.util.concurrent.Semaphore(WORKING, true);
     /** Requests allowed to work on the monitor at the same time; the others queue fairly. */
@@ -59,7 +68,8 @@ public class ApiServer {
     /** Requests a second allowed per address for requests without the control key (property crowdwatch.rateLimit, 0 = off). */
     public static final int RATE_LIMIT = Integer.getInteger("crowdwatch.rateLimit", 50);
     // pages that hold no data and may be loaded without a key
-    private static final String[] PUBLIC = { "GET /", "GET /console", "GET /console.css", "GET /console.js", "GET /classic", "GET /scout", "GET /health" };
+    private static final String[] PUBLIC = { "GET /", "GET /console", "GET /console.css", "GET /console.js", "GET /i18n.js", "GET /classic", "GET /scout", "GET /health",
+        "POST /api/login", "GET /api/me", "POST /api/logout" };
     // the venue drawing: needs a key (it shows the building), sent as an image
     // what a scout device may do with the scout key
     private static final String[] SCOUT = { "GET /api/unit", "POST /api/ack", "POST /api/onscene", "POST /api/resolve", "POST /api/sos", "POST /api/found", "POST /api/foundperson",
@@ -86,6 +96,11 @@ public class ApiServer {
     static final int MAX_BODY = 64 * 1024;
     // null while stopped
     private HttpServer server;
+    // true while serving HTTPS
+    private volatile boolean secure;
+
+    /** @return true if the server is running with HTTPS */
+    public boolean secure() { return server != null && secure; }
 
     /**
      * @param monitor the shared monitor
@@ -113,9 +128,33 @@ public class ApiServer {
      * @return the port actually used
      * @throws IOException if the port is already in use
      */
-    public synchronized int start(int port) throws IOException {
+    public synchronized int start(int port) throws IOException { return start(port, null); }
+
+    /**
+     * Starts listening, with HTTPS if a TLS context is given (see {@link Tls}). With HTTPS every
+     * reply also carries Strict-Transport-Security, so browsers keep using HTTPS.
+     *
+     * @param port TCP port (0 picks a free port)
+     * @param tls  TLS context with the server's certificate, or null for plain HTTP
+     * @return the port actually used
+     * @throws IOException if the port is already in use
+     */
+    public synchronized int start(int port, javax.net.ssl.SSLContext tls) throws IOException {
         if (server != null) return server.getAddress().getPort();
-        server = HttpServer.create(new InetSocketAddress(port), BACKLOG);
+        if (tls != null) {
+            com.sun.net.httpserver.HttpsServer https = com.sun.net.httpserver.HttpsServer.create(new InetSocketAddress(port), BACKLOG);
+            https.setHttpsConfigurator(new com.sun.net.httpserver.HttpsConfigurator(tls) {
+                @Override public void configure(com.sun.net.httpserver.HttpsParameters p) {
+                    javax.net.ssl.SSLParameters sp = tls.getDefaultSSLParameters();
+                    sp.setProtocols(new String[] { "TLSv1.3", "TLSv1.2" });
+                    p.setSSLParameters(sp);
+                }
+            });
+            server = https;
+        } else {
+            server = HttpServer.create(new InetSocketAddress(port), BACKLOG);
+        }
+        secure = tls != null;
         server.setExecutor(Executors.newFixedThreadPool(THREADS, r -> { Thread t = new Thread(r, "api"); t.setDaemon(true); return t; }));
         server.createContext("/", this::handle);
         server.start();
@@ -156,11 +195,28 @@ public class ApiServer {
             }
             String endpoint = method + " " + path;
             String given = header(ex, "X-Api-Key") != null ? header(ex, "X-Api-Key") : q.search("key");
-            boolean control = apiKey == null || apiKey.equals(given);
+            Accounts acc = accounts;
+            boolean open = apiKey == null && (acc == null || !acc.hasUsers());
+            boolean control = open || (apiKey != null && apiKey.equals(given));
             if (!control && limiter.tooMany(ex.getRemoteAddress().getAddress().getHostAddress())) { send(ex, 429, type, err("too many requests, slow down")); return; }
-            if (!control && !in(endpoint, PUBLIC)) {
-                if (scoutKey == null || !scoutKey.equals(given)) { send(ex, 401, type, err("missing or wrong API key")); return; }
-                if (!in(endpoint, SCOUT)) { send(ex, 403, type, err("the scout key cannot use " + endpoint)); return; }
+            Accounts.Who who = control ? SYSTEM : identify(acc, ex, given);
+            if (endpoint.equals("POST /api/login")) { login(ex, acc, q); return; }
+            if (endpoint.equals("GET /api/me")) { send(ex, 200, type, me(who, acc)); return; }
+            if (who == null && !in(endpoint, PUBLIC)) { send(ex, 401, type, err(acc != null && acc.hasUsers() ? "please sign in" : "missing or wrong API key")); return; }
+            if (who != null && !in(endpoint, PUBLIC)) {
+                String refused = permit(who, endpoint, q);
+                if (refused != null) {
+                    if (method.equals("POST")) audit(who, endpoint, q, false, refused);
+                    send(ex, 403, type, err(refused));
+                    return;
+                }
+            }
+            if (endpoint.equals("POST /api/logout")) { if (acc != null) acc.logout(bearer(ex)); send(ex, 200, type, "{\"ok\":true,\"message\":\"signed out\"}"); return; }
+            if (path.startsWith("/api/users") || path.startsWith("/api/devices") || endpoint.equals("GET /api/audit")) {
+                if (acc == null) { send(ex, 404, type, err("personal logins are not switched on for this server")); return; }
+                String[] reply = accountsEndpoint(acc, who, endpoint, q);
+                send(ex, Integer.parseInt(reply[0]), type, reply[1]);
+                return;
             }
             if (endpoint.equals("GET /api/map")) {
                 byte[] img;
@@ -189,6 +245,7 @@ public class ApiServer {
                     case "GET /", "GET /console" -> { code = 200; type = "text/html; charset=utf-8"; body = resource("console.html"); }
                     case "GET /console.css" -> { code = 200; type = "text/css; charset=utf-8"; body = resource("console.css"); }
                     case "GET /console.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("console.js"); }
+                    case "GET /i18n.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("i18n.js"); }
                     case "GET /classic" -> { code = 200; type = "text/html; charset=utf-8"; body = Dashboard.page(m, apiKey != null); }
                     case "GET /api/overview" -> { code = 200; body = overview(); }
                     case "GET /api/units" -> { code = 200; body = units(); }
@@ -222,7 +279,7 @@ public class ApiServer {
                     case "POST /api/incidents" -> { code = 0; body = null; r = m.reportIncident(q.search("category"), q.search("area"), q.search("details"), q.search("contact"), q.search("language")); }
                     case "POST /api/resolve" -> { code = 0; body = null; r = m.resolve(num(q.search("id")), q.search("note")); }
                     case "POST /api/onscene" -> { code = 0; body = null; r = m.confirmOnScene(num(q.search("id"))); }
-                    case "GET /scout" -> { code = 200; type = "text/html; charset=utf-8"; body = ScoutPage.page(apiKey != null); }
+                    case "GET /scout" -> { code = 200; type = "text/html; charset=utf-8"; body = ScoutPage.page(apiKey != null || (accounts != null && accounts.hasUsers())); }
                     case "GET /api/unit" -> { code = 200; body = unit(q.search("id")); }
                     case "GET /api/status" -> { code = 200; body = status(); }
                     case "POST /api/ack" -> { code = 0; body = null; r = m.acknowledge(q.search("unit")); }
@@ -248,6 +305,7 @@ public class ApiServer {
             if (r != null && code != 303) {
                 body = "{\"ok\":" + r.ok + ",\"message\":" + str(r.message) + "}";
             }
+            if (r != null) audit(who, endpoint, q, r.ok, r.message);
         } catch (RuntimeException e) {
             code = 400;
             body = err(String.valueOf(e.getMessage()));
@@ -683,6 +741,157 @@ public class ApiServer {
         return Integer.parseInt(s.trim().replaceAll("^[A-Za-z]", ""));
     }
 
+    /** Switches on personal logins, device codes and the audit log (null switches them off). */
+    public void setAccounts(Accounts a) { accounts = a; }
+
+    /** @return the accounts in use, or null */
+    public Accounts accounts() { return accounts; }
+
+    private static Accounts.Who accountsWho(String name, Accounts.Role role, String unit) {
+        // Who has a package-private constructor; this keeps SYSTEM a constant
+        return new Accounts.Who(name, role, unit);
+    }
+
+    /** @return the token of an {@code Authorization: Bearer} header, or null */
+    private static String bearer(HttpExchange ex) {
+        String a = header(ex, "Authorization");
+        return a != null && a.regionMatches(true, 0, "Bearer ", 0, 7) ? a.substring(7).trim() : null;
+    }
+
+    /** @return who is calling: a signed-in user, a scout device code, the scout key, or null */
+    private Accounts.Who identify(Accounts acc, HttpExchange ex, String given) {
+        if (acc != null) {
+            Accounts.Who w = acc.session(bearer(ex), m.now());
+            if (w != null) return w;
+            w = acc.device(given);
+            if (w != null) return w;
+        }
+        if (scoutKey != null && scoutKey.equals(given)) return new Accounts.Who("scout key", null, null);
+        return null;
+    }
+
+    /**
+     * Checks the caller's rights for an endpoint. For a signed-in user the officer name is
+     * always the user's own (a typed name is ignored), so nobody can act in someone else's
+     * name. A device code may act only for its own unit.
+     *
+     * @return null if allowed, otherwise the reason for 403
+     */
+    private String permit(Accounts.Who who, String endpoint, AVLTree<String, String> q) {
+        if (who.role == null) {   // scout key or device code
+            if (!in(endpoint, SCOUT)) return "a scout device cannot use " + endpoint;
+            if (who.unit == null) return null;
+            switch (endpoint) {
+                case "GET /api/unit" -> q.insert("id", who.unit);
+                case "POST /api/ack", "POST /api/sos", "POST /api/foundperson" -> { q.insert("unit", who.unit); q.delete("officer"); }
+                case "POST /api/onscene", "POST /api/resolve", "POST /api/found" -> {
+                    Incident i;
+                    synchronized (m) { i = m.findIncident(num(q.search("id"))); }
+                    if (i == null || !who.unit.equalsIgnoreCase(i.unitId)) return "this device belongs to " + who.unit + " and can only act on its own tasks";
+                    q.insert("unit", who.unit);
+                    q.delete("officer");
+                }
+                default -> { }
+            }
+            return null;
+        }
+        if (who != SYSTEM) q.insert("officer", who.name);
+        Accounts.Role need;
+        if (in(endpoint, ADMIN_ONLY)) need = Accounts.Role.ADMIN;
+        else if (in(endpoint, OFFICER_GETS)) need = Accounts.Role.OFFICER;
+        else if (endpoint.startsWith("GET ")) need = Accounts.Role.VIEWER;
+        else if (in(endpoint, OPERATOR_POSTS)) need = Accounts.Role.OPERATOR;
+        else need = Accounts.Role.OFFICER;
+        return who.atLeast(need) ? null : "your role " + who.role + " cannot use " + endpoint + " (needs " + need + ")";
+    }
+
+    // parameters that are never written to the audit log
+    private static final String[] SECRET = { "password", "key", "token", "back" };
+
+    /** Writes one change to the audit log: who, which endpoint, its parameters, the result. */
+    private void audit(Accounts.Who who, String endpoint, AVLTree<String, String> q, boolean ok, String result) {
+        Accounts acc = accounts;
+        if (acc == null) return;
+        StringBuilder sb = new StringBuilder();
+        for (String k : q.keysInOrder()) if (!in(k, SECRET)) sb.append(k).append('=').append(q.search(k)).append(' ');
+        String role = who == null ? "-" : who.role != null ? who.role.name() : who.unit != null ? "DEVICE" : "SCOUT";
+        acc.record(m.now(), who == null ? "?" : who.name, role, endpoint.substring(endpoint.indexOf(' ') + 1).replaceFirst("^/api/", ""), sb.toString().trim() + " -> " + result, ok);
+    }
+
+    /** POST /api/login: user and password; replies with a session token, or 401. */
+    private void login(HttpExchange ex, Accounts acc, AVLTree<String, String> q) throws IOException {
+        String type = "application/json";
+        if (acc == null || !acc.hasUsers()) { send(ex, 404, type, err("personal logins are not switched on for this server")); return; }
+        String token = acc.login(q.search("user"), q.search("password"), m.now());
+        if (token == null) { send(ex, 401, type, err("wrong user name or password, or the account is locked or switched off")); return; }
+        Accounts.Who w = acc.session(token, m.now());
+        send(ex, 200, type, "{\"ok\":true,\"token\":" + str(token) + ",\"name\":" + str(w.name) + ",\"role\":" + str(w.role.name())
+            + ",\"hours\":" + Accounts.SESSION_HOURS + "}");
+    }
+
+    /** GET /api/me: who the caller is, and whether the server asks for a login. */
+    private String me(Accounts.Who who, Accounts acc) {
+        boolean logins = acc != null && acc.hasUsers();
+        if (who == null) return "{\"signedIn\":false,\"logins\":" + logins + ",\"keyRequired\":" + (apiKey != null) + "}";
+        String role = who.role != null ? who.role.name() : who.unit != null ? "DEVICE" : "SCOUT";
+        return "{\"signedIn\":true,\"logins\":" + logins + ",\"name\":" + str(who.name) + ",\"role\":" + str(role) + ",\"unit\":" + str(who.unit)
+            + ",\"system\":" + (who == SYSTEM) + "}";
+    }
+
+    /**
+     * User accounts (admin), device codes (officer) and the audit log (officer).
+     *
+     * @return { HTTP code, JSON body }
+     */
+    private String[] accountsEndpoint(Accounts acc, Accounts.Who who, String endpoint, AVLTree<String, String> q) {
+        String done;
+        switch (endpoint) {
+            case "GET /api/users" -> {
+                StringBuilder sb = new StringBuilder("[");
+                for (Accounts.User u : acc.users()) {
+                    if (sb.length() > 1) sb.append(',');
+                    sb.append("{\"name\":").append(str(u.name)).append(",\"role\":").append(str(u.role.name())).append(",\"active\":").append(u.active).append('}');
+                }
+                return new String[] { "200", sb.append(']').toString() };
+            }
+            case "POST /api/users" -> {
+                String name = q.search("name");
+                String pw = q.search("password");
+                if (pw != null && pw.isEmpty()) pw = null;
+                Accounts.Role role;
+                try { role = Accounts.Role.valueOf(String.valueOf(q.search("role")).trim().toUpperCase()); }
+                catch (IllegalArgumentException e) { role = acc.user(name) == null ? null : acc.user(name).role; }
+                done = acc.setUser(name, role, pw);
+                if (done == null && q.search("active") != null) done = acc.setActive(name, !"0".equals(q.search("active")) && !"false".equals(q.search("active")));
+                if (done == null) done = "OK: user " + name + " saved as " + acc.user(name).role + (acc.user(name).active ? "" : " (switched off)");
+            }
+            case "POST /api/devices/code" -> {
+                String unit;
+                synchronized (m) { Unit u = m.findUnit(q.search("unit")); unit = u == null ? null : u.id; }
+                if (unit == null) done = "unknown unit " + q.search("unit");
+                else {
+                    String code = acc.issueDevice(unit);
+                    audit(who, endpoint, q, true, "new device code issued for " + unit);
+                    return new String[] { "200", "{\"ok\":true,\"unit\":" + str(unit) + ",\"code\":" + str(code) + ",\"message\":" + str("Device code for " + unit + ": " + code + " (the unit's earlier code no longer works)") + "}" };
+                }
+            }
+            case "POST /api/devices/revoke" -> done = acc.revokeDevice(String.valueOf(q.search("unit"))) ? "OK: the device code of " + q.search("unit") + " was cancelled" : "unit " + q.search("unit") + " has no device code";
+            case "GET /api/audit" -> {
+                StringBuilder sb = new StringBuilder("[");
+                for (Accounts.Entry e : acc.recentAudit(200)) {
+                    if (sb.length() > 1) sb.append(',');
+                    sb.append("{\"time\":").append(str(e.at.withNano(0).toString())).append(",\"user\":").append(str(e.user)).append(",\"role\":").append(str(e.role))
+                      .append(",\"action\":").append(str(e.action)).append(",\"summary\":").append(str(e.summary)).append(",\"ok\":").append(e.ok).append('}');
+                }
+                return new String[] { "200", sb.append(']').toString() };
+            }
+            default -> { return new String[] { "404", err("unknown endpoint " + endpoint) }; }
+        }
+        boolean ok = done.startsWith("OK");
+        audit(who, endpoint, q, ok, done);
+        return new String[] { ok ? "200" : "422", "{\"ok\":" + ok + ",\"message\":" + str(ok ? done.substring(4) : done) + "}" };
+    }
+
     /** @return the first value of a request header, or null */
     private static String header(HttpExchange ex, String name) { return ex.getRequestHeaders().getFirst(name); }
 
@@ -729,6 +938,8 @@ public class ApiServer {
      */
     private static void send(HttpExchange ex, int code, String type, String body) throws IOException {
         byte[] b = body.getBytes(StandardCharsets.UTF_8);
+        if (ex instanceof com.sun.net.httpserver.HttpsExchange) ex.getResponseHeaders().set("Strict-Transport-Security", "max-age=31536000");
+        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         ex.getResponseHeaders().set("Content-Type", type);
         ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         ex.sendResponseHeaders(code, code == 303 ? -1 : b.length);

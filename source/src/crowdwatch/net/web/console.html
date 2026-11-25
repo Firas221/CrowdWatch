@@ -11,11 +11,19 @@
   <form id="loginForm" class="login-card">
     <div class="brand-row"><span class="logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
       <div><div class="brand">CrowdWatch</div><div class="sub">Control room console</div></div></div>
-    <label>Officer name<input id="lgOfficer" required autocomplete="name" placeholder="e.g. Khalid"></label>
-    <label>Control key<input id="lgKey" type="password" autocomplete="current-password" placeholder="leave empty if the server has no key"></label>
+    <div id="lgUserBox" hidden>
+      <label>User name<input id="lgUser" autocomplete="username" autocapitalize="none"></label>
+      <label>Password<input id="lgPass" type="password" autocomplete="current-password"></label>
+    </div>
+    <div id="lgKeyBox">
+      <label>Officer name<input id="lgOfficer" autocomplete="name" placeholder="e.g. Khalid"></label>
+      <label>Control key<input id="lgKey" type="password" autocomplete="current-password" placeholder="leave empty if the server has no key"></label>
+    </div>
     <div id="lgErr" class="err"></div>
-    <button class="btn-primary" type="submit">Sign in and check in</button>
+    <button class="btn-primary" type="submit" id="lgSubmit">Sign in and check in</button>
+    <button class="link" type="button" id="lgSwitch" hidden>Use the control key instead</button>
     <div class="sub">The key is kept in this browser only. Scouts use <a href="/scout">/scout</a>; the plain dashboard is at <a href="/classic">/classic</a>.</div>
+    <button class="btn" type="button" data-lang-btn>العربية</button>
   </form>
 </div>
 
@@ -29,6 +37,7 @@
     <label class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
       <span class="sr">Search</span><input id="search" placeholder="Search areas, incidents (I1003), units"><kbd>Ctrl K</kbd></label>
     <div class="top-right">
+      <button class="top-btn" type="button" data-lang-btn aria-label="Language">العربية</button>
       <button id="themeBtn" class="top-btn" aria-label="Switch light or dark theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span id="themeLabel">Light</span></button>
       <button id="bellBtn" class="top-btn bell" aria-label="Alerts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span id="bellCount" class="bell-count" hidden></span></button>
       <button id="officerBtn" class="officer" title="Check in now"><span id="avatar" class="avatar"></span><span class="officer-text"><span id="officerName"></span><span id="officerState" class="officer-state"></span></span></button>
@@ -44,6 +53,7 @@
   <div id="modal" class="modal" hidden></div>
   <div id="toast" class="toast" hidden></div>
 </div>
+<script src="/i18n.js"></script>
 <script src="/console.js"></script>
 </body>
 </html>

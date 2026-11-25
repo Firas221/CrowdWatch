@@ -127,7 +127,9 @@ public class Database {
             "ALTER TABLE incidents ADD COLUMN found_at TIMESTAMP", "ALTER TABLE incidents ADD COLUMN found_where VARCHAR(40)", "ALTER TABLE incidents ADD COLUMN found_by VARCHAR(40)",
             "ALTER TABLE incidents ADD COLUMN search_min INT", "ALTER TABLE incidents ADD COLUMN lost_steps INT", "ALTER TABLE incidents ADD COLUMN follow_ups INT", "ALTER TABLE incidents ADD COLUMN wait_handled INT",
             "ALTER TABLE incident_archive ADD COLUMN found_at TIMESTAMP", "ALTER TABLE incident_archive ADD COLUMN found_where VARCHAR(40)", "ALTER TABLE incident_archive ADD COLUMN found_by VARCHAR(40)",
-            "ALTER TABLE incident_archive ADD COLUMN search_min INT", "ALTER TABLE incident_archive ADD COLUMN lost_steps INT", "ALTER TABLE incident_archive ADD COLUMN follow_ups INT", "ALTER TABLE incident_archive ADD COLUMN wait_handled INT" };
+            "ALTER TABLE incident_archive ADD COLUMN search_min INT", "ALTER TABLE incident_archive ADD COLUMN lost_steps INT", "ALTER TABLE incident_archive ADD COLUMN follow_ups INT", "ALTER TABLE incident_archive ADD COLUMN wait_handled INT",
+            // audit log of the network server: written one row at a time, never deleted by a save
+            "CREATE TABLE audit (happened_at TIMESTAMP, username VARCHAR(40), role VARCHAR(12), action VARCHAR(40), summary VARCHAR(400), ok INT)" };
         try (Statement s = c.createStatement()) {
             for (String sql : steps) {
                 try { s.executeUpdate(sql); }
@@ -159,6 +161,47 @@ public class Database {
             throw e;
         }
         m.noteSaved(m.now(), backupIfDue());
+    }
+
+    // true once the tables are known to exist, so an audit row does not re-check the schema
+    private volatile boolean auditReady;
+
+    /**
+     * @return a sink that writes each audit entry to this database's AUDIT table at once (its own
+     *         short transaction), so the trail survives a crash between two saves
+     */
+    public crowdwatch.net.Accounts.Sink auditSink() {
+        return e -> {
+            try (Connection c = open()) {
+                if (!auditReady) { schema(c); auditReady = true; }
+                try (PreparedStatement ps = c.prepareStatement("INSERT INTO audit VALUES (?,?,?,?,?,?)")) {
+                    ps.setTimestamp(1, Timestamp.valueOf(e.at));
+                    ps.setString(2, e.user); ps.setString(3, e.role); ps.setString(4, e.action); ps.setString(5, e.summary);
+                    ps.setInt(6, e.ok ? 1 : 0);
+                    ps.executeUpdate();
+                }
+            } catch (SQLException ex) { throw new IllegalStateException(ex); }
+        };
+    }
+
+    /**
+     * Reads the newest rows of the audit log.
+     *
+     * @return lines "time  user (role)  action  OK|REFUSED  summary", newest first
+     */
+    public String[] readAudit(int max) throws SQLException {
+        crowdwatch.ds.LinkedList<String> out = new crowdwatch.ds.LinkedList<>();
+        try (Connection c = open()) {
+            schema(c);
+            try (Statement s = c.createStatement()) {
+                s.setMaxRows(max);
+                try (ResultSet rs = s.executeQuery("SELECT happened_at, username, role, action, summary, ok FROM audit ORDER BY happened_at DESC")) {
+                    while (rs.next()) out.addLast(rs.getTimestamp(1).toLocalDateTime().withNano(0) + "  " + rs.getString(2) + " (" + rs.getString(3) + ")  "
+                        + rs.getString(4) + "  " + (rs.getInt(6) == 1 ? "OK" : "REFUSED") + "  " + rs.getString(5));
+                }
+            }
+        }
+        return out.toArray(new String[0]);
     }
 
     /** Daily backups are kept for this many days. */

@@ -64,7 +64,17 @@ public class App {
      *             or --server &lt;venue&gt; [port] [api-key] for headless mode
      */
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && args[0].equals("--server")) { headless(args); return; }
+        if (args.length > 0 && args[0].equals("--user")) { user(args); return; }
+        if (args.length > 0 && args[0].equals("--server")) {
+            boolean https = false;
+            int n = 0;
+            for (String a : args) if (a.equals("--https")) https = true; else n++;
+            String[] rest = new String[n];
+            n = 0;
+            for (String a : args) if (!a.equals("--https")) rest[n++] = a;
+            headless(rest, https);
+            return;
+        }
         SwingUtilities.invokeLater(() -> {
             try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) { }
             VenueProfile p;
@@ -99,8 +109,8 @@ public class App {
      * are printed as "RADIO &gt;&gt; unit: text" for a radio operator ({@link ConsoleRelay}); every
      * message also goes to the venue's radio gateway if one is configured. The {@link Watchdog} runs the officer and acknowledgement checks.
      */
-    private static void headless(String[] args) throws Exception {
-        if (args.length < 2) { System.out.println("Usage: java -jar CrowdWatch.jar --server <airport|stadium|umrah|file.venue> [port] [control-key] [scout-key]"); return; }
+    private static void headless(String[] args, boolean https) throws Exception {
+        if (args.length < 2) { System.out.println("Usage: java -jar CrowdWatch.jar --server <airport|stadium|umrah|file.venue> [port] [control-key] [scout-key] [--https]"); return; }
         VenueProfile p = pick(args[1]);
         int port = args.length > 2 ? Integer.parseInt(args[2]) : 8080;
         CrowdMonitor m = new CrowdMonitor(Clock.SYSTEM);
@@ -123,9 +133,12 @@ public class App {
         Watchdog watchdog = new Watchdog(m);
         watchdog.start();
         crowdwatch.net.ApiServer api = new crowdwatch.net.ApiServer(m, args.length > 3 ? args[3] : null, args.length > 4 ? args[4] : null, crowdwatch.net.ApiServer.RATE_LIMIT);
-        if (args.length < 4 || args[3].isBlank()) System.out.println("WARNING: no control key given - anyone on the network can read and change everything. Use: --server <venue> <port> <control-key> [scout-key]");
-        int bound = api.start(port);
-        System.out.println("CrowdWatch server for " + m.venueName() + " on http://localhost:" + bound + "/  (Ctrl+C to stop)");
+        crowdwatch.net.Accounts accounts = openAccounts(db, p.code);
+        api.setAccounts(accounts);
+        if (accounts.hasUsers()) System.out.println("Personal logins are on: " + accounts.users().length + " user(s). Every change is written to the audit log.");
+        else if (args.length < 4 || args[3].isBlank()) System.out.println("WARNING: no users and no control key - anyone on the network can read and change everything. Add users with: java -jar CrowdWatch.jar --user <name> <ROLE>");
+        int bound = api.start(port, https ? tls() : null);
+        System.out.println("CrowdWatch server for " + m.venueName() + " on " + (https ? "https" : "http") + "://localhost:" + bound + "/  (Ctrl+C to stop)");
         java.util.concurrent.ScheduledExecutorService saver = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         if (db != null) saver.scheduleAtFixedRate(() -> {
             try { db.save(m); } catch (Exception e) { System.out.println(m.now() + "  AUTOSAVE FAILED: " + Database.explain(e)); }
@@ -142,6 +155,82 @@ public class App {
             Database.shutdown();
         }));
         Thread.currentThread().join();
+    }
+
+    /** Installation-wide accounts file (password hashes only). */
+    public static final Path ACCOUNTS_FILE = Path.of("crowdwatch-data", "accounts.txt");
+
+    /**
+     * Opens the accounts file and connects the audit log to the venue's database (table AUDIT)
+     * and to a daily text file in crowdwatch-data/audit/&lt;venue&gt;/.
+     *
+     * @param db the venue's database, or null (then only the text file is written)
+     */
+    public static crowdwatch.net.Accounts openAccounts(Database db, String code) throws java.io.IOException {
+        crowdwatch.net.Accounts a = new crowdwatch.net.Accounts(ACCOUNTS_FILE);
+        if (db != null) a.addSink(db.auditSink());
+        a.addSink(crowdwatch.net.Accounts.dailyFile(Path.of("crowdwatch-data", "audit", Database.safeName(code))));
+        return a;
+    }
+
+    /**
+     * The TLS context for --https: the key store named by -Dcrowdwatch.keystore (default
+     * crowdwatch-data/tls/server.p12). Its password comes from CROWDWATCH_KEYSTORE_PASSWORD; if
+     * neither the key store nor the variable exists, a self-signed certificate for this computer
+     * is made and its random password kept in crowdwatch-data/tls/keystore-password.txt (readable
+     * only by the owner where the file system allows).
+     */
+    public static javax.net.ssl.SSLContext tls() throws java.io.IOException {
+        java.io.File ks = new java.io.File(System.getProperty("crowdwatch.keystore", "crowdwatch-data/tls/server.p12"));
+        Path pwFile = Path.of("crowdwatch-data", "tls", "keystore-password.txt");
+        char[] pw = crowdwatch.net.Tls.passwordFromEnvironment();
+        if (pw == null && java.nio.file.Files.exists(pwFile)) pw = java.nio.file.Files.readString(pwFile).trim().toCharArray();
+        if (pw == null && ks.exists()) throw new java.io.IOException("set " + crowdwatch.net.Tls.PASSWORD_VARIABLE + " to the password of " + ks);
+        if (!ks.exists()) {
+            if (pw == null) {
+                pw = java.util.UUID.randomUUID().toString().toCharArray();
+                java.nio.file.Files.createDirectories(pwFile.getParent());
+                java.nio.file.Files.writeString(pwFile, new String(pw));
+                java.io.File f = pwFile.toFile();
+                f.setReadable(false, false); f.setReadable(true, true); f.setWritable(false, false); f.setWritable(true, true);
+            }
+            String host = "localhost", ip = "127.0.0.1";
+            try { java.net.InetAddress me = java.net.InetAddress.getLocalHost(); host = me.getHostName(); ip = me.getHostAddress(); } catch (java.io.IOException ignored) { }
+            crowdwatch.net.Tls.selfSigned(ks, pw, "localhost", "127.0.0.1", host, ip);
+            System.out.println("Made a self-signed certificate in " + ks + " - browsers will warn until it is trusted; use the venue's own certificate for real use.");
+        }
+        return crowdwatch.net.Tls.context(ks, pw);
+    }
+
+    /**
+     * Command line user management:
+     * {@code --user <name> <VIEWER|OPERATOR|OFFICER|ADMIN>} adds the user or changes the role and
+     * password (asked twice on the console, or taken from CROWDWATCH_PASSWORD for scripts);
+     * {@code --user <name> off} / {@code on} switches a user off or on; {@code --user list} lists them.
+     */
+    private static void user(String[] args) throws Exception {
+        crowdwatch.net.Accounts a = new crowdwatch.net.Accounts(ACCOUNTS_FILE);
+        if (args.length == 2 && args[1].equals("list")) {
+            for (crowdwatch.net.Accounts.User u : a.users()) System.out.println(u.name + "  " + u.role + (u.active ? "" : "  (off)"));
+            return;
+        }
+        if (args.length < 3) { System.out.println("Usage: java -jar CrowdWatch.jar --user <name> <VIEWER|OPERATOR|OFFICER|ADMIN|off|on>   or   --user list"); return; }
+        String done;
+        if (args[2].equalsIgnoreCase("off") || args[2].equalsIgnoreCase("on")) done = a.setActive(args[1], args[2].equalsIgnoreCase("on"));
+        else {
+            crowdwatch.net.Accounts.Role role = crowdwatch.net.Accounts.Role.valueOf(args[2].toUpperCase());
+            String pw = System.getenv("CROWDWATCH_PASSWORD");
+            if (pw == null) {
+                java.io.Console c = System.console();
+                if (c == null) { System.out.println("No console: set CROWDWATCH_PASSWORD to give the password."); System.exit(1); return; }
+                char[] p1 = c.readPassword("Password for %s: ", args[1]), p2 = c.readPassword("Again: ");
+                if (p1 == null || !java.util.Arrays.equals(p1, p2)) { System.out.println("The passwords differ - nothing changed."); System.exit(1); return; }
+                pw = new String(p1);
+            }
+            done = a.setUser(args[1], role, pw);
+        }
+        System.out.println(done == null ? "Saved in " + ACCOUNTS_FILE.toAbsolutePath() : "Not saved: " + done);
+        if (done != null) System.exit(1);
     }
 
     /** @return a built-in venue if {@code arg} is its code, otherwise the venue file at that path */

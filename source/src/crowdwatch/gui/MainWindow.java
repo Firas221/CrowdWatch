@@ -18,8 +18,10 @@ import crowdwatch.model.*;
 import crowdwatch.model.Enums.*;
 
 /**
- * The desktop window: a menu bar and seven tabs (Dashboard, Areas &amp; crowd, Units, Incidents,
- * Routes, Reports, Data structures).
+ * The desktop window: a menu bar and eight tabs (Dashboard, Operations, Areas &amp; crowd, Units,
+ * Incidents, Routes, Reports, Data structures). The Network menu starts the server (HTTP or HTTPS)
+ * and manages users, scout device codes and the audit log; every button action is written to the
+ * audit log with the officer's name.
  * <p>
  * Every button calls one {@link CrowdMonitor} method and shows the {@link Result} in the status
  * bar. The window registers a {@link MonitorListener}, so changes made by sensor feeds or other
@@ -75,6 +77,13 @@ public class MainWindow extends JFrame {
     private final JList<String> reviewList = new JList<>(reviewModel);
     private final JComboBox<String> sosArea = new JComboBox<>(), zonePick = new JComboBox<>();
     private final JTextArea opsOut = text(20);
+    // newer operations: lost persons, evacuation proposal, fire alarm, public messages, counting
+    private final DefaultListModel<String> lostModel = new DefaultListModel<>(), annModel = new DefaultListModel<>();
+    private final JList<String> lostList = new JList<>(lostModel), annList = new JList<>(annModel);
+    private final JComboBox<String> foundArea = new JComboBox<>(), alarmArea = new JComboBox<>(), countFrom = new JComboBox<>(), countTo = new JComboBox<>();
+    private final JLabel proposalState = new JLabel(" "), countState = new JLabel(" ");
+    // logins, device codes and the audit log (shared with the network server); null if the accounts file cannot be read
+    private crowdwatch.net.Accounts accounts;
     // checks officer check-ins and unit acknowledgements every 15 s
     private final Watchdog watchdog;
     // radio gateway of the current venue, or null
@@ -90,6 +99,7 @@ public class MainWindow extends JFrame {
         super("CrowdWatch - Crowd Monitoring and Response");
         this.m = monitor;
         this.db = db;
+        openAccounts();
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() { public void windowClosing(WindowEvent e) { exit(); } });
         setJMenuBar(menu());
@@ -163,14 +173,22 @@ public class MainWindow extends JFrame {
             String key = JOptionPane.showInputDialog(this, "Control key for the dashboard and API (leave empty for an open demo server):", "");
             if (key == null) return;
             String scoutKey = key.isBlank() ? null : JOptionPane.showInputDialog(this, "Scout key for the scouts' devices (optional):", "");
+            boolean https = JOptionPane.showConfirmDialog(this, "Use HTTPS (encrypted)?\nWithout a certificate of your own, a self-signed one is made and browsers warn once per device.",
+                "CrowdWatch server", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
             try {
                 if (api != null) api.stop();
                 api = new crowdwatch.net.ApiServer(m, key, scoutKey, crowdwatch.net.ApiServer.RATE_LIMIT);
-                int p = api.start(Integer.parseInt(port.trim()));
-                show(Result.ok("Server running: other terminals open http://<this-computer>:" + p + "/  (API under /api/...)"));
+                api.setAccounts(accounts);
+                int p = api.start(Integer.parseInt(port.trim()), https ? App.tls() : null);
+                show(Result.ok("Server running: other terminals open " + (https ? "https" : "http") + "://<this-computer>:" + p + "/  (API under /api/...)"
+                    + (accounts != null && accounts.hasUsers() ? "  - personal logins on" : "")));
             } catch (Exception ex) { show(Result.fail("Server not started: " + ex.getMessage())); }
         }));
         net.add(item("Stop server", () -> { if (api != null) api.stop(); api = null; show(Result.ok("Server stopped.")); }));
+        net.addSeparator();
+        net.add(item("Users and roles...", this::usersDialog));
+        net.add(item("Scout device codes...", this::deviceDialog));
+        net.add(item("Audit log...", this::auditDialog));
         bar.add(file);
         bar.add(venue);
         bar.add(net);
@@ -207,6 +225,7 @@ public class MainWindow extends JFrame {
             try { note = App.loadOrSeed(m, next, p); }
             catch (IllegalStateException e) { db = null; note = e.getMessage() + " " + App.loadOrSeed(m, null, p); }
         }
+        openAccounts();
         venueChanged();
         show(db == null ? Result.fail(note) : Result.ok(note));
     }
@@ -234,6 +253,14 @@ public class MainWindow extends JFrame {
         for (int i = all.length - 1; i >= 0; i--) if (!all[i].restricted) { routeTo.setSelectedItem(all[i].id); break; }
         incCategory.setModel(new DefaultComboBoxModel<>(m.categoryTree().inOrder().toArray(new Category[0])));
         sosArea.setModel(new DefaultComboBoxModel<>(ids));
+        foundArea.setModel(new DefaultComboBoxModel<>(ids));
+        alarmArea.setModel(new DefaultComboBoxModel<>(ids));
+        String[] withOutside = new String[ids.length + 1];
+        withOutside[0] = CrowdMonitor.OUTSIDE;
+        System.arraycopy(ids, 0, withOutside, 1, ids.length);
+        countFrom.setModel(new DefaultComboBoxModel<>(withOutside));
+        countTo.setModel(new DefaultComboBoxModel<>(withOutside));
+        if (ids.length > 0) countTo.setSelectedItem(ids[0]);
         for (Area a : allAreas) if (!a.restricted) { sosArea.setSelectedItem(a.id); break; }
         DefaultComboBoxModel<String> zones = new DefaultComboBoxModel<>();
         for (Area a : allAreas) if (zones.getIndexOf(a.sector) < 0) zones.addElement(a.sector);
@@ -269,6 +296,7 @@ public class MainWindow extends JFrame {
         rb.add(confirm); rb.add(falseAlarm);
         JScrollPane rs = scroll(reviewList);
         rs.setPreferredSize(new Dimension(300, 90));
+        rs.setMinimumSize(new Dimension(200, 90));
         side.add(form("Automatic dispatches to review", new String[] { "" }, new JComponent[] { rs }, rb));
 
         JTextField sosText = new JTextField();
@@ -290,9 +318,84 @@ public class MainWindow extends JFrame {
         send.addActionListener(e -> act(m.broadcast(bc.getText(), officerName.getText())));
         side.add(form("Message to all units", new String[] { "Text" }, new JComponent[] { bc }, send));
 
-        p.add(new JScrollPane(side), BorderLayout.WEST);
+        JPanel more = column();
+        lostList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        lostList.setVisibleRowCount(4);
+        JScrollPane ls = scroll(lostList);
+        ls.setPreferredSize(new Dimension(240, 80));
+        ls.setMinimumSize(new Dimension(200, 80));
+        JButton found = new JButton("Found here"), foundOther = new JButton("Report a found person");
+        found.addActionListener(e -> {
+            String s = lostList.getSelectedValue();
+            if (s == null) { show(Result.fail("Select a missing person first.")); return; }
+            act(m.found(incId(s.substring(0, s.indexOf(' '))), sel(foundArea), officerName.getText()));
+        });
+        JTextField foundText = new JTextField();
+        foundOther.addActionListener(e -> act(m.foundPerson(sel(foundArea), foundText.getText(), "", officerName.getText())));
+        more.add(form("Lost persons - still missing", new String[] { "", "Found in area", "Found person (if no case)" }, new JComponent[] { ls, foundArea, foundText }, stack(found, foundOther)));
+
+        JButton startProposed = new JButton("Start evacuation"), dismiss = new JButton("Dismiss");
+        startProposed.addActionListener(e -> { if (confirm("Start the proposed evacuation? Every unit will be told.")) act(m.decideProposal(true, officerName.getText())); });
+        dismiss.addActionListener(e -> act(m.decideProposal(false, officerName.getText())));
+        JPanel pb = new JPanel(new GridLayout(1, 2, 6, 0));
+        pb.add(startProposed); pb.add(dismiss);
+        more.add(form("Evacuation proposed by the system", new String[] { "" }, new JComponent[] { proposalState }, pb));
+
+        JTextField alarmText = new JTextField("fire alarm");
+        JButton alarm = new JButton("Raise alarm");
+        alarm.addActionListener(e -> act(m.alarm(sel(alarmArea), alarmText.getText())));
+        more.add(form("Fire or building alarm", new String[] { "Area", "What" }, new JComponent[] { alarmArea, alarmText }, alarm));
+
+        annList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        annList.setVisibleRowCount(3);
+        JScrollPane as = scroll(annList);
+        as.setPreferredSize(new Dimension(240, 70));
+        as.setMinimumSize(new Dimension(200, 70));
+        JButton approve = new JButton("Approve"), reject = new JButton("Reject"), announce = new JButton("Show on public screens now");
+        approve.addActionListener(e -> decideAnnouncement(true));
+        reject.addActionListener(e -> decideAnnouncement(false));
+        JTextField annText = new JTextField();
+        announce.addActionListener(e -> act(m.announce(annText.getText(), officerName.getText())));
+        JPanel ab = new JPanel(new GridLayout(1, 2, 6, 0));
+        ab.add(approve); ab.add(reject);
+        more.add(form("Public messages (signs and PA)", new String[] { "Drafts", "", "Own message" }, new JComponent[] { as, ab, annText }, announce));
+
+        JTextField moveCount = new JTextField("1");
+        JButton move = new JButton("Record movement"), resetCount = new JButton("Reset count check after a recount");
+        move.addActionListener(e -> {
+            try { act(m.movePeople(sel(countFrom), sel(countTo), Integer.parseInt(moveCount.getText().trim()), Source.STAFF)); }
+            catch (NumberFormatException ex) { show(Result.fail("People must be a whole number.")); }
+        });
+        resetCount.addActionListener(e -> { if (confirm("Has every area been recounted by hand? The gate counts start again from the current total.")) act(m.resetCountCheck(officerName.getText())); });
+        more.add(form("Counting (people moving between areas)", new String[] { "From", "To", "People", "Count check" }, new JComponent[] { countFrom, countTo, moveCount, countState }, stack(move, resetCount)));
+
+        JButton handover = new JButton("Shift handover report");
+        handover.addActionListener(e -> {
+            String text;
+            synchronized (m) { text = m.handoverReport(); }
+            JTextArea t = text(24);
+            t.setText(text);
+            t.setCaretPosition(0);
+            JOptionPane.showMessageDialog(this, scroll(t), "Shift handover report", JOptionPane.PLAIN_MESSAGE);
+        });
+        more.add(form("Shift handover", new String[] { }, new JComponent[] { }, handover));
+
+        for (JPanel c : new JPanel[] { side, more }) c.setPreferredSize(new Dimension(340, c.getLayout().preferredLayoutSize(c).height));
+        JPanel cols = new JPanel(new GridLayout(1, 2, 8, 0));
+        cols.add(side);
+        cols.add(more);
+        JScrollPane cs = new JScrollPane(cols, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED, ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        cs.getVerticalScrollBar().setUnitIncrement(16);
+        p.add(cs, BorderLayout.WEST);
         p.add(titled("Evacuation plan, unacknowledged tasks and messages to units (devices and radio)", scroll(opsOut)), BorderLayout.CENTER);
         return p;
+    }
+
+    /** Approves or rejects the public message selected in the drafts list. */
+    private void decideAnnouncement(boolean approve) {
+        String s = annList.getSelectedValue();
+        if (s == null) { show(Result.fail("Select a drafted message first.")); return; }
+        act(m.decideAnnouncement(Integer.parseInt(s.substring(1, s.indexOf(' '))), approve, officerName.getText()));
     }
 
     /** Confirms or rejects the automatic dispatch selected in the review list. */
@@ -312,6 +415,18 @@ public class MainWindow extends JFrame {
         reviewModel.clear();
         for (Incident i : m.awaitingReview()) reviewModel.addElement(i + " " + i.area.id + " -> " + nz(i.unitId) + "  " + i.details);
         if (selected != null) reviewList.setSelectedValue(selected, false);
+        String lostSel = lostList.getSelectedValue(), annSel = annList.getSelectedValue();
+        lostModel.clear();
+        for (Incident i : m.lostCases()) if (i.foundAt == null) lostModel.addElement(i + " " + i.area.id + "  " + i.minutesOpen(m.now()) + " min  " + i.details);
+        if (lostSel != null) lostList.setSelectedValue(lostSel, false);
+        annModel.clear();
+        for (AutoRules.Announcement a : m.pendingAnnouncements()) annModel.addElement("A" + a.id + " " + a.ref + ": " + a.text);
+        if (annSel != null) annList.setSelectedValue(annSel, false);
+        String[] prop = m.proposal();
+        proposalState.setText(prop == null ? "No proposal" : "<html><b>" + prop[0] + "</b>: " + prop[1] + " (" + prop[2] + ")</html>");
+        proposalState.setForeground(prop == null ? Color.DARK_GRAY : BAD);
+        long[] cc = m.countCheck();
+        countState.setText(cc == null ? "gates not counted" : "gates " + cc[0] + ", areas " + cc[1] + ", difference " + (cc[2] > 0 ? "+" : "") + cc[2]);
         StringBuilder sb = new StringBuilder();
         if (m.evacuationZone() != null) {
             sb.append("EVACUATION IN PROGRESS: ").append(m.evacuationZone()).append("\n");
@@ -669,10 +784,88 @@ public class MainWindow extends JFrame {
         if (key != null) select(t, model, String.valueOf(key));
     }
 
-    /** Shows the result of a button action and refreshes the window. */
+    /** Opens the accounts and the audit log for the current venue (again after a venue switch). */
+    private void openAccounts() {
+        try { accounts = App.openAccounts(db, m.venue() == null ? "venue" : m.venue().code); }
+        catch (java.io.IOException e) { accounts = null; }
+        if (api != null) api.setAccounts(accounts);
+    }
+
+    /**
+     * Shows the result of a button action, writes it to the audit log with the officer's name
+     * (role DESKTOP) and refreshes the window.
+     */
     private void act(Result r) {
+        if (accounts != null) {
+            String who = officerName.getText().isBlank() ? (m.officer() == null ? "desktop" : m.officer()) : officerName.getText().trim();
+            accounts.record(m.now(), who, "DESKTOP", "desktop", r.message, r.ok);
+        }
         show(r);
         refresh();
+    }
+
+    /** Network &gt; Users and roles: lists the users and adds or changes one. */
+    private void usersDialog() {
+        if (accounts == null) { show(Result.fail("The accounts file cannot be read: " + App.ACCOUNTS_FILE.toAbsolutePath())); return; }
+        StringBuilder list = new StringBuilder();
+        for (crowdwatch.net.Accounts.User u : accounts.users()) list.append(u.name).append("  ").append(u.role).append(u.active ? "" : "  (switched off)").append('\n');
+        JTextField name = new JTextField();
+        JComboBox<crowdwatch.net.Accounts.Role> role = new JComboBox<>(crowdwatch.net.Accounts.Role.values());
+        role.setSelectedItem(crowdwatch.net.Accounts.Role.OPERATOR);
+        JPasswordField pw = new JPasswordField(), pw2 = new JPasswordField();
+        JCheckBox active = new JCheckBox("Can sign in", true);
+        JTextArea current = text(6);
+        current.setText(list.length() == 0 ? "No users yet: the first one should be an ADMIN." : list.toString());
+        JPanel f = form("Add or change a user (an empty password keeps the current one)", new String[] { "User name", "Role", "Password", "Again", "" },
+            new JComponent[] { name, role, pw, pw2, active }, null);
+        JPanel all = new JPanel(new BorderLayout(6, 6));
+        all.add(titled("Users", scroll(current)), BorderLayout.NORTH);
+        all.add(f, BorderLayout.CENTER);
+        if (JOptionPane.showConfirmDialog(this, all, "Users and roles", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        String p1 = new String(pw.getPassword()), p2 = new String(pw2.getPassword());
+        if (!p1.equals(p2)) { show(Result.fail("The two passwords differ - nothing changed.")); return; }
+        String done = accounts.setUser(name.getText(), (crowdwatch.net.Accounts.Role) role.getSelectedItem(), p1.isEmpty() ? null : p1);
+        if (done == null) done = accounts.setActive(name.getText(), active.isSelected());
+        act(done == null ? Result.ok("User " + name.getText().trim() + " saved as " + role.getSelectedItem() + (active.isSelected() ? "." : " (switched off).")) : Result.fail(done));
+    }
+
+    /** Network &gt; Scout device codes: issues or cancels the code of one unit's phone. */
+    private void deviceDialog() {
+        if (accounts == null) { show(Result.fail("The accounts file cannot be read.")); return; }
+        String[] ids;
+        synchronized (m) { ids = m.unitTree().keysInOrder().toArray(new String[0]); }
+        JComboBox<String> unit = new JComboBox<>(ids);
+        String[] options = { "Issue new code", "Cancel code", "Close" };
+        int c = JOptionPane.showOptionDialog(this, form("Unit", new String[] { "Unit" }, new JComponent[] { unit }, null), "Scout device codes",
+            JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+        String u = (String) unit.getSelectedItem();
+        if (u == null || c < 0 || c == 2) return;
+        if (c == 0) {
+            String code = accounts.issueDevice(u);
+            act(Result.ok("New device code issued for " + u + "."));
+            JTextField shown = new JTextField(code);
+            shown.setEditable(false);
+            shown.setFont(new Font(Font.MONOSPACED, Font.BOLD, 20));
+            JOptionPane.showMessageDialog(this, new Object[] { "Type this code on the scout phone of " + u + " (it replaces the unit's earlier code):", shown },
+                "Device code", JOptionPane.INFORMATION_MESSAGE);
+        } else act(accounts.revokeDevice(u) ? Result.ok("Device code of " + u + " cancelled.") : Result.fail(u + " has no device code."));
+    }
+
+    /** Network &gt; Audit log: the newest entries from the venue's database (or from memory). */
+    private void auditDialog() {
+        String[] lines = null;
+        Database d = db;
+        if (d != null) try { lines = d.readAudit(300); } catch (Exception ignored) { }
+        if (lines == null && accounts != null) {
+            crowdwatch.net.Accounts.Entry[] e = accounts.recentAudit(300);
+            lines = new String[e.length];
+            for (int k = 0; k < e.length; k++) lines[k] = e[k].toString();
+        }
+        JTextArea t = text(26);
+        t.setColumns(110);
+        t.setText(lines == null || lines.length == 0 ? "No entries yet." : String.join("\n", lines));
+        t.setCaretPosition(0);
+        JOptionPane.showMessageDialog(this, scroll(t), "Audit log (newest first)", JOptionPane.PLAIN_MESSAGE);
     }
 
     /** Shows a result in the status bar: green for OK, red for REFUSED. */

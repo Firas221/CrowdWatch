@@ -1290,11 +1290,194 @@ public class TestRunner {
                 + ", " + (t2.contains("COUNT_MISMATCH") ? "alert at once" : "quiet at first") + ", " + (t3.contains("COUNT_MISMATCH") && alertText.contains("300 too many") ? "alert after 5 min (300 too many)" : "no alert: " + t3)
                 + ", " + (rs2.ok && cc2 != null && cc2[2] == 0 ? "reset to difference 0" : rs2.message));
 
+        System.out.println("PART M - PERSONAL LOGINS, ROLES, DEVICE CODES, AUDIT LOG, HTTPS AND ARABIC\n");
+        java.nio.file.Path accFile = java.nio.file.Path.of("build", "test-accounts", "accounts.txt");
+        deleteTree(accFile.getParent().toFile());
+        crowdwatch.net.Accounts acc = new crowdwatch.net.Accounts(accFile);
+        String r1 = acc.setUser("x", crowdwatch.net.Accounts.Role.ADMIN, "longenough");
+        String r2 = acc.setUser("admin", crowdwatch.net.Accounts.Role.ADMIN, "short");
+        String r3 = acc.setUser("admin", crowdwatch.net.Accounts.Role.ADMIN, "Admin-pass-1");
+        String r4 = acc.setUser("admin", crowdwatch.net.Accounts.Role.VIEWER, null);
+        String r5 = acc.setActive("admin", false);
+        acc.setUser("sara", crowdwatch.net.Accounts.Role.OFFICER, "Sara-pass-1");
+        acc.setUser("omar", crowdwatch.net.Accounts.Role.OPERATOR, "Omar-pass-1");
+        acc.setUser("vera", crowdwatch.net.Accounts.Role.VIEWER, "Vera-pass-1");
+        String fileText = java.nio.file.Files.readString(accFile);
+        crowdwatch.net.Accounts reread = new crowdwatch.net.Accounts(accFile);
+        check("Accounts: names and password length are checked, the last administrator cannot be demoted or switched off, the file holds hashes only and reads auditBack",
+            "short name refused, short password refused, admin added, demote refused, switch-off refused, no password in file, 4 users read back, login OK",
+            (r1 != null ? "short name refused" : "accepted") + ", " + (r2 != null ? "short password refused" : "accepted") + ", " + (r3 == null ? "admin added" : r3)
+                + ", " + (r4 != null ? "demote refused" : "demoted") + ", " + (r5 != null ? "switch-off refused" : "switched off")
+                + ", " + (fileText.contains("Sara-pass-1") || fileText.contains("Admin-pass-1") ? "PASSWORD IN FILE" : "no password in file")
+                + ", " + reread.users().length + " users read back, " + (reread.login("SARA", "Sara-pass-1", LocalDateTime.of(2026, 12, 1, 9, 0)) != null ? "login OK" : "login failed"));
+
+        LocalDateTime lt = LocalDateTime.of(2026, 12, 1, 9, 0);
+        int wrong = 0;
+        for (int k = 0; k < crowdwatch.net.Accounts.MAX_FAILURES; k++) if (acc.login("omar", "guess" + k, lt) == null) wrong++;
+        String lockedRight = acc.login("omar", "Omar-pass-1", lt.plusMinutes(1));
+        String afterLock = acc.login("omar", "Omar-pass-1", lt.plusMinutes(crowdwatch.net.Accounts.LOCK_MINUTES + 1));
+        String tok = acc.login("vera", "Vera-pass-1", lt);
+        crowdwatch.net.Accounts.Who sw1 = acc.session(tok, lt.plusHours(1));
+        crowdwatch.net.Accounts.Who sw2 = acc.session(tok, lt.plusHours(crowdwatch.net.Accounts.SESSION_HOURS + 1));
+        check("Logins: 5 wrong passwords lock the name for 5 minutes (even the right password is refused), a session lasts 12 hours",
+            "5 refused, locked: refused, after 5 min: OK, session vera VIEWER, expired after 12 h",
+            wrong + " refused, locked: " + (lockedRight == null ? "refused" : "accepted") + ", after 5 min: " + (afterLock != null ? "OK" : "refused")
+                + ", session " + (sw1 == null ? "none" : sw1.name + " " + sw1.role) + ", " + (sw2 == null ? "expired after 12 h" : "still valid"));
+
+        // the server with personal logins and no control key
+        CrowdMonitor asrv = venue("airport");
+        crowdwatch.net.ApiServer aapi = new crowdwatch.net.ApiServer(asrv, null, null, 0);
+        crowdwatch.ds.LinkedList<String> auditRows = new crowdwatch.ds.LinkedList<>();
+        acc.addSink(e -> auditRows.addLast(e.toString()));
+        aapi.setAccounts(acc);
+        int aport = aapi.start(0);
+        java.net.http.HttpClient hc = java.net.http.HttpClient.newBuilder().proxy(java.net.http.HttpClient.Builder.NO_PROXY).build();
+        String base = "http://127.0.0.1:" + aport;
+        String noLogin = call(hc, base + "/api/areas", null);
+        String me0 = call(hc, base + "/api/me", null);
+        String badLogin = call(hc, base + "/api/login", "user=sara&password=nope");
+        String tVera = token(call(hc, base + "/api/login", "user=vera&password=Vera-pass-1"));
+        String tOmar = token(call(hc, base + "/api/login", "user=omar&password=Omar-pass-1"));
+        String tSara = token(call(hc, base + "/api/login", "user=sara&password=Sara-pass-1"));
+        String tAdmin = token(call(hc, base + "/api/login", "user=admin&password=Admin-pass-1"));
+        String vRead = call(hc, base + "/api/areas", null, "Authorization", "Bearer " + tVera);
+        String vWrite = call(hc, base + "/api/occupancy", "area=GATE-B&count=900", "Authorization", "Bearer " + tVera);
+        String oWrite = call(hc, base + "/api/occupancy", "area=GATE-B&count=900", "Authorization", "Bearer " + tOmar);
+        String oEvac = call(hc, base + "/api/evacuate", "zone=GATE-B", "Authorization", "Bearer " + tOmar);
+        String sCheck = call(hc, base + "/api/checkin", "officer=Mallory", "Authorization", "Bearer " + tSara);
+        String officerNow = asrv.officer();
+        String sUsers = call(hc, base + "/api/users", null, "Authorization", "Bearer " + tSara);
+        String aAdd = call(hc, base + "/api/users", "name=nadia&role=OPERATOR&password=Nadia-pass-1", "Authorization", "Bearer " + tAdmin);
+        String aList = call(hc, base + "/api/users", null, "Authorization", "Bearer " + tAdmin);
+        check("Server with personal logins: nothing without signing in; a viewer reads but cannot change; an operator enters counts but cannot evacuate; an officer's name is always their own; only an admin manages users",
+            "401, logins on, wrong password 401, 4 tokens, viewer read 200, viewer write 403, operator count 200, operator evacuate 403, check-in 200 as sara (not Mallory), officer users 403, admin adds nadia 200 and sees 5 users",
+            code(noLogin) + ", " + (me0.contains("\"logins\":true") ? "logins on" : me0) + ", wrong password " + code(badLogin) + ", "
+                + ((tVera != null ? 1 : 0) + (tOmar != null ? 1 : 0) + (tSara != null ? 1 : 0) + (tAdmin != null ? 1 : 0)) + " tokens, viewer read " + code(vRead)
+                + ", viewer write " + code(vWrite) + ", operator count " + code(oWrite) + ", operator evacuate " + code(oEvac) + ", check-in " + code(sCheck) + " as " + officerNow
+                + (officerNow != null && !officerNow.contains("Mallory") ? " (not Mallory)" : "") + ", officer users " + code(sUsers) + ", admin adds nadia " + code(aAdd)
+                + " and sees " + (aList.split("\"name\"").length - 1) + " users");
+
+        // device codes: a phone that can act only for its own unit
+        Result ri = asrv.reportIncident("MEDICAL", "GATE-B", "Fainted", null, null);
+        int mine = asrv.nextIncidentId() - 1;
+        String mineUnit = asrv.findIncident(mine).unitId;
+        Result otherInc = asrv.reportIncident("SECURITY", "CHECKIN-1", "Unattended bag", null, null);
+        int theirs = asrv.nextIncidentId() - 1;
+        String theirUnit = asrv.findIncident(theirs).unitId;
+        String codeJson = call(hc, base + "/api/devices/code", "unit=" + mineUnit, "Authorization", "Bearer " + tSara);
+        String dcode = codeJson.replaceAll(".*\"code\":\"([A-Z0-9]+)\".*", "$1");
+        String opCode = call(hc, base + "/api/devices/code", "unit=" + mineUnit, "Authorization", "Bearer " + tOmar);
+        String devUnit = call(hc, base + "/api/unit?id=" + theirUnit, null, "X-Api-Key", dcode);
+        String devAck = call(hc, base + "/api/ack", "unit=" + theirUnit, "X-Api-Key", dcode);
+        String devOther = call(hc, base + "/api/onscene", "id=" + theirs, "X-Api-Key", dcode);
+        String devOwn = call(hc, base + "/api/onscene", "id=" + mine, "X-Api-Key", dcode);
+        String devAreas = call(hc, base + "/api/areas", null, "X-Api-Key", dcode);
+        acc.revokeDevice(mineUnit);
+        String devAfter = call(hc, base + "/api/unit?id=" + mineUnit, null, "X-Api-Key", dcode);
+        check("Device codes: an officer issues a code for one unit; the phone sees and acts only for that unit; a cancelled code stops working",
+            "code issued, operator refused 403, phone sees " + mineUnit + " (not " + theirUnit + "), ack 200 for its own unit, other unit's task 403, own task on scene 200, control-room data 403, after cancel 401",
+            (ri.ok && otherInc.ok && dcode.length() == 10 ? "code issued" : "no code: " + codeJson) + ", operator refused " + code(opCode)
+                + ", phone sees " + devUnit.replaceAll(".*\"id\":\"([A-Z0-9-]+)\".*", "$1") + (devUnit.contains("\"id\":\"" + theirUnit + "\"") ? "" : " (not " + theirUnit + ")")
+                + ", ack " + code(devAck) + (asrv.findIncident(mine).acknowledged != null ? " for its own unit" : " for ?") + ", other unit's task " + code(devOther)
+                + ", own task on scene " + code(devOwn) + ", control-room data " + code(devAreas) + ", after cancel " + code(devAfter));
+
+        String auditJson = call(hc, base + "/api/audit", null, "Authorization", "Bearer " + tSara);
+        String vAudit = call(hc, base + "/api/audit", null, "Authorization", "Bearer " + tVera);
+        String allAudit = String.join("\n", auditRows.toArray(new String[0]));
+        trace("audit log (newest 6)", String.join("\n", java.util.Arrays.copyOfRange(allAudit.split("\n"), Math.max(0, auditRows.size() - 6), auditRows.size())));
+        check("Audit log: every login, change and refusal is written with the user and role; passwords are never written; officers read it, viewers cannot",
+            "failed login logged, omar refused evacuate logged, sara checkin logged, device ack logged, no passwords, officer 200, viewer 403",
+            (allAudit.contains("sara (-)") || allAudit.contains("sara (OFFICER)  login  REFUSED") ? "failed login logged" : "failed login missing") + ", "
+                + (allAudit.contains("omar (OPERATOR)  evacuate  REFUSED") ? "omar refused evacuate logged" : "missing") + ", "
+                + (allAudit.contains("sara (OFFICER)  checkin  OK") ? "sara checkin logged" : "missing") + ", "
+                + (allAudit.contains("(DEVICE)  ack  OK") ? "device ack logged" : "missing") + ", "
+                + (allAudit.contains("pass-1") ? "PASSWORD WRITTEN" : "no passwords") + ", officer " + code(auditJson) + ", viewer " + code(vAudit));
+        aapi.stop();
+
+        if (Database.driverAvailable()) {
+            deleteTree(new java.io.File("build/test-db/audit"));
+            Database adbx = new Database("build/test-db/audit/airport");
+            crowdwatch.net.Accounts.Sink sink = adbx.auditSink();
+            crowdwatch.net.Accounts acc2 = new crowdwatch.net.Accounts(null);
+            acc2.addSink(sink);
+            acc2.record(lt, "sara", "OFFICER", "evacuate", "zone=GATE-B -> Evacuation started", true);
+            acc2.record(lt.plusMinutes(1), "omar", "OPERATOR", "evacuate", "zone=GATE-B -> needs OFFICER", false);
+            String[] auditBack = adbx.readAudit(10);
+            check("Audit log in the venue's database (table AUDIT): rows are written at once and read back newest first",
+                "2 rows, newest omar REFUSED, then sara OK", auditBack.length + " rows, newest " + (auditBack.length > 0 && auditBack[0].contains("omar") && auditBack[0].contains("REFUSED") ? "omar REFUSED" : "?")
+                    + ", then " + (auditBack.length > 1 && auditBack[1].contains("sara") && auditBack[1].contains(" OK ") ? "sara OK" : "?"));
+        }
+
+        // HTTPS with a self-signed certificate made by keytool
+        java.io.File ksFile = new java.io.File("build/test-tls/server.p12");
+        deleteTree(ksFile.getParentFile());
+        char[] ksPw = "test-store-pass".toCharArray();
+        String httpsResult;
+        try {
+            crowdwatch.net.Tls.selfSigned(ksFile, ksPw, "localhost", "127.0.0.1");
+            crowdwatch.net.ApiServer sapi = new crowdwatch.net.ApiServer(venue("airport"), "secret");
+            int sport = sapi.start(0, crowdwatch.net.Tls.context(ksFile, ksPw));
+            java.net.http.HttpClient tc = java.net.http.HttpClient.newBuilder().proxy(java.net.http.HttpClient.Builder.NO_PROXY).sslContext(crowdwatch.net.Tls.trusting(ksFile, ksPw)).build();
+            java.net.http.HttpResponse<String> hr = tc.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("https://localhost:" + sport + "/api/areas")).header("X-Api-Key", "secret").build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            String plainHttp;
+            try { plainHttp = code(call(hc, "http://127.0.0.1:" + sport + "/health", null)); } catch (RuntimeException e) { plainHttp = "refused"; }
+            String untrusted;
+            try {
+                java.net.http.HttpClient distrustClient = java.net.http.HttpClient.newBuilder().proxy(java.net.http.HttpClient.Builder.NO_PROXY).build();
+                distrustClient.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("https://localhost:" + sport + "/health")).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                untrusted = "accepted";
+            } catch (java.io.IOException e) { untrusted = "rejected"; }
+            httpsResult = "HTTPS " + hr.statusCode() + ", " + (sapi.secure() ? "secure" : "plain") + ", HSTS " + hr.headers().firstValue("Strict-Transport-Security").isPresent()
+                + ", plain HTTP on that port " + (plainHttp.startsWith("2") ? "answered" : "not answered") + ", unknown certificate " + untrusted;
+            sapi.stop();
+        } catch (java.io.IOException e) { httpsResult = "failed: " + e.getMessage(); }
+        check("HTTPS: a self-signed certificate is made with keytool; the server answers over TLS with Strict-Transport-Security; plain HTTP gets nothing; a client that does not trust the certificate is refused",
+            "HTTPS 200, secure, HSTS true, plain HTTP on that port not answered, unknown certificate rejected", httpsResult);
+
+        // Arabic screens
+        crowdwatch.net.ApiServer lapi = new crowdwatch.net.ApiServer(venue("airport"), "secret");
+        int lport = lapi.start(0);
+        String i18n = call(hc, "http://127.0.0.1:" + lport + "/i18n.js", null);
+        String consolePage = call(hc, "http://127.0.0.1:" + lport + "/", null);
+        String scoutHtml = call(hc, "http://127.0.0.1:" + lport + "/scout", null);
+        lapi.stop();
+        check("Arabic screens: the language file is served without a key and switches the page to right to left; the console and the scout phone load it and have a language button",
+            "i18n.js 200, rtl, Arabic text, console loads it, scout loads it, both have the button",
+            "i18n.js " + code(i18n) + ", " + (i18n.contains("'rtl'") ? "rtl" : "no rtl") + ", " + (i18n.contains("الإخلاء") ? "Arabic text" : "no Arabic")
+                + ", " + (consolePage.contains("/i18n.js") ? "console loads it" : "console misses it") + ", " + (scoutHtml.contains("/i18n.js") ? "scout loads it" : "scout misses it")
+                + ", " + (consolePage.contains("data-lang-btn") && scoutHtml.contains("data-lang-btn") ? "both have the button" : "button missing"));
+
         if (Database.driverAvailable()) Database.shutdown();
 
         System.out.println("=====================================");
         System.out.println("TOTAL: " + passed + " passed, " + failed + " failed");
         if (failed > 0) System.exit(1);
+    }
+
+    /** Sends a GET (body null) or a form POST with optional header name/value pairs. @return "status body" */
+    private static String call(java.net.http.HttpClient c, String url, String body, String... headers) {
+        try {
+            java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url));
+            for (int k = 0; k + 1 < headers.length; k += 2) b.header(headers[k], headers[k + 1]);
+            if (body != null) b.header("Content-Type", "application/x-www-form-urlencoded").POST(java.net.http.HttpRequest.BodyPublishers.ofString(body));
+            java.net.http.HttpResponse<String> r = c.send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            return r.statusCode() + " " + r.body();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** @return the status code of a {@link #call} reply */
+    private static String code(String reply) { return reply.substring(0, 3); }
+
+    /** @return the session token of a login reply, or null */
+    private static String token(String reply) {
+        java.util.regex.Matcher mt = java.util.regex.Pattern.compile("\"token\":\"([^\"]+)\"").matcher(reply);
+        return mt.find() ? mt.group(1) : null;
     }
 
     /** Deletes a folder and everything in it (removes the previous test database). */

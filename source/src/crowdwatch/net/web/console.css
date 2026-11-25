@@ -285,3 +285,24 @@ tr.sel td { background: rgba(47,124,246,.12); }
 .seg button.on { background: var(--accent); color: #fff; }
 .clear-est { padding: 10px 14px; border-radius: 12px; background: var(--tint); border: 1px solid var(--border); }
 .sos-card { align-self: flex-start; }
+
+/* Arabic: right to left. Flex rows turn round by themselves; these rules mirror what is placed by side. */
+html[dir="rtl"] body { font-family: "Segoe UI", Tahoma, "Noto Sans Arabic", "Noto Naskh Arabic", system-ui, sans-serif; }
+html[dir="rtl"] .live { margin-left: 0; margin-right: 8px; }
+html[dir="rtl"] .bell-count { right: auto; left: -5px; }
+html[dir="rtl"] .nav { border-right: 0; border-left: 1px solid var(--border); }
+html[dir="rtl"] .mini { margin-right: 0; margin-left: 8px; }
+html[dir="rtl"] .blade { right: auto; left: 0; border-left: 0; border-right: 1px solid var(--border); box-shadow: 20px 0 50px rgba(0,0,0,.35); }
+html[dir="rtl"] .blade-head h2 { padding-right: 0; padding-left: 36px; }
+html[dir="rtl"] .timeline { border-left: 0; border-right: 2px solid var(--border); margin-left: 0; margin-right: 6px; }
+html[dir="rtl"] .tl::before { left: auto; right: -7px; }
+html[dir="rtl"] th, html[dir="rtl"] td { text-align: right; }
+html[dir="rtl"] .mono, html[dir="rtl"] input[type="password"], html[dir="rtl"] #lgUser { direction: ltr; unicode-bidi: isolate; }
+@media (max-width: 720px) { html[dir="rtl"] .nav { border-left: 0; } }
+html[dir="rtl"] .tl { padding: 0 16px 12px 0; }
+/* audit log */
+.audit { max-height: 50vh; overflow: auto; }
+.audit td { font-size: 12.5px; vertical-align: top; }
+.audit td.bad { color: var(--CRITICAL-t); font-weight: 700; }
+.role-tag { display: inline-block; padding: 1px 8px; border-radius: 8px; background: var(--track); font-size: 11px; font-weight: 700; margin-inline-start: 6px; }
+.code-big { font: 700 26px/1.2 ui-monospace, Consolas, monospace; letter-spacing: 3px; padding: 10px 14px; border-radius: 10px; background: var(--track); display: inline-block; direction: ltr; }

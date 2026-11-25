@@ -10,6 +10,7 @@
   };
   var S = {
     key: store.get('key') || '', officer: store.get('officer') || '', view: store.get('view') || 'overview',
+    token: store.get('token') || '', role: store.get('role') || '', logins: false, users: null, audit: null, userMode: true,
     ov: null, areas: [], incidents: [], alerts: [], units: [], venue: null, online: true,
     hist: { people: [], high: [], open: [], avail: [], review: [] }, series: {}, seeded: {}, top: [],
     sel: null, detail: null, alertFilter: 'ALL', incFilter: 'OPEN', zone: '', preview: null, lost: [], signs: [],
@@ -51,9 +52,18 @@
   function alertTime(a) { return String(a.time).substring(11, 19); }
 
   // ---------- server ----------
+  // the sign-in of this browser: a session token (personal login) or the control key
+  function auth() {
+    var h = {};
+    if (S.token) h.Authorization = 'Bearer ' + S.token;
+    else if (S.key) h['X-Api-Key'] = S.key;
+    return h;
+  }
+  var RANK = { VIEWER: 0, OPERATOR: 1, OFFICER: 2, ADMIN: 3 };
+  // true if this browser's user has at least the role (the control key counts as ADMIN)
+  function can(role) { return !S.token || (RANK[S.role] || 0) >= RANK[role]; }
   function api(path, form) {
-    var opt = { headers: {} };
-    if (S.key) opt.headers['X-Api-Key'] = S.key;
+    var opt = { headers: auth() };
     if (form) {
       opt.method = 'POST';
       opt.headers['Content-Type'] = 'application/x-www-form-urlencoded';
@@ -62,7 +72,7 @@
       opt.body = p.toString();
     }
     return fetch(path, opt).then(function (r) {
-      if (r.status === 401) { var e = new Error('The control key is missing or wrong.'); e.auth = true; throw e; }
+      if (r.status === 401) { var e = new Error(S.token ? 'Your session has ended - please sign in again.' : 'The control key is missing or wrong.'); e.auth = true; throw e; }
       if (r.status === 429) throw new Error('The server says: too many requests.');
       return r.text().then(function (t) { try { return JSON.parse(t); } catch (x) { return { ok: false, message: t }; } });
     });
@@ -103,7 +113,7 @@
     return api('/api/layout').then(function (l) {
       S.layout = l;
       if (!l.map || !l.image) return;
-      var opt = { headers: S.key ? { 'X-Api-Key': S.key } : {} };
+      var opt = { headers: auth() };
       return fetch('/api/map', opt).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { if (b) S.mapUrl = URL.createObjectURL(b); });
     });
   }
@@ -162,7 +172,7 @@
     if (!o) return;
     $('venueName').textContent = o.venue;
     document.title = 'CrowdWatch - ' + o.venue;
-    $('officerName').textContent = 'Officer ' + S.officer;
+    $('officerName').innerHTML = esc((S.token ? '' : 'Officer ') + S.officer) + (S.token ? '<span class="role-tag">' + esc(S.role) + '</span>' : '');
     $('avatar').textContent = initials(S.officer);
     var st = $('officerState');
     var mine = o.officer && o.officer.toLowerCase() === S.officer.toLowerCase();
@@ -575,8 +585,29 @@
       + '<div class="sub">The lookout stops for every unit and the person is brought to ' + esc(l ? l.meeting : 'the meeting point') + '.</div>'
       + '<div class="dialog-foot"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn-green">Mark found</button></div></form>');
   }
+  // true while the screen is in Arabic (see i18n.js); long generated sentences are written in Arabic directly
+  function arabic() { return !!(window.cwLang && window.cwLang.get() === 'ar'); }
+  function rulesCardAr(r) {
+    var on = function (b) { return b ? 'مفعّل' : 'متوقف'; };
+    var cc = S.ov.countCheck;
+    return '<section class="card"><div class="card-head"><div><h2>Automatic rules</h2><span class="sub">They act while automatic dispatch is ON (sensor checks, shifts and handover reports always run).</span></div>'
+      + '<button class="btn" data-act="handover">' + icon(I.review, 16) + ' Handover report now</button></div><dl class="kv">'
+      + '<dt>Sensor checks</dt><dd>تُعد البيانات قديمة بعد ' + r.stale + ' دقيقة بلا قراءة؛ ويُشك في العدد إذا قفز أكثر من ' + r.jump + '% من السعة خلال دقيقة</dd>'
+      + '<dt>Follow-through</dt><dd>تذكير بعد ' + r.onscene + ' دقيقة من التأكيد دون الوصول، ودعم بعد ' + 2 * r.onscene + ' دقيقة؛ وحدة بديلة بعد ' + r.maxwait + ' دقيقة انتظار؛ تُغلق بلاغات الحشد التلقائية بعد ' + r.autoclose + ' دقيقة دون المرتفع</dd>'
+      + '<dt>Count check</dt><dd>' + (cc ? 'المناطق ' + fmt(cc.counted) + '، البوابات ' + fmt(cc.expected) + ' (الفرق ' + fmt(cc.difference) + ')' + (cc.ok ? '' : ' - <b>لا تتطابق</b>')
+        + ' <button class="btn sm" data-act="countreset">Reset after a recount</button>' : 'غير مستخدمة (لا يرسل أي عداد بوابات دخولاً أو خروجاً)') + '</dd>'
+      + '<dt>Reinforcement</dt><dd>' + (r.reinforceCritical ? 'تحصل المنطقة المزدحمة على ' + r.reinforceHigh + ' وحدات عند المرتفع و' + r.reinforceCritical + ' عند الحرج ('
+        + esc((r.reinforceSkills.length ? r.reinforceSkills : ['crowd-control', 'security']).join('، ')) + ' أولاً؛ عند المرتفع فقط الوحدات ضمن ' + (r.reinforceMax ? r.reinforceMax + ' دقيقة مشي' : 'أي مسافة') + '، وعند الحرج من أي مسافة)؛ وتعود إلى مواقعها بعد ' + r.reinforceHold + ' دقيقة من الهدوء' : 'متوقف') + '</dd>'
+      + '<dt>Crowd flow</dt><dd>إيقاف التدفق ' + on(r.holdflow) + '؛ إرسال الوحدات مسبقاً ' + (r.preposition ? 'للمناطق التي ستصبح حرجة خلال ' + r.preposition + ' دقيقة' : 'متوقف') + '؛ تغطية القطاعات ' + on(r.cover) + '</dd>'
+      + '<dt>Evacuation</dt><dd>يُقترح بعد ' + r.propose + ' دقيقة من الحرج مع الارتفاع، أو عند إنذار؛ ولا يبدؤه إلا ضابط</dd>'
+      + '<dt>Lost persons</dt><dd>نطاق البحث ' + r.lostRadius + ' دقيقة مشي، ويتسع كل ' + r.lostWiden + ' دقيقة؛ نقطة التجمع ' + esc(r.meeting || 'مكان البلاغ') + '</dd>'
+      + '<dt>Public messages</dt><dd>المسودات ' + on(r.signs) + ' (تتطلب اعتماداً)</dd>'
+      + '<dt>Scheduled peaks</dt><dd>' + (r.events.length ? r.events.map(function (e) { return esc(e.time + ' ' + e.name + ' (' + e.zone + '، ' + e.minutes + ' دقيقة)'); }).join('؛ ') : 'لا يوجد') + '</dd>'
+      + '<dt>Shift changes</dt><dd>' + esc(r.shifts.join('، ') || 'لا يوجد') + ' - يُكتب تقرير تسليم عند كل تبديل</dd></dl></section>';
+  }
   function rulesCard(r) {
     if (!r) return '';
+    if (arabic()) return rulesCardAr(r);
     var on = function (b) { return b ? 'on' : 'off'; };
     return '<section class="card"><div class="card-head"><div><h2>Automatic rules</h2><span class="sub">They act while automatic dispatch is ON (sensor checks, shifts and handover reports always run).</span></div>'
       + '<button class="btn" data-act="handover">' + icon(I.review, 16) + ' Handover report now</button></div><dl class="kv">'
@@ -594,7 +625,7 @@
       + '<dt>Shift changes</dt><dd>' + esc(r.shifts.join(', ') || 'none') + ' - a handover report is written at each</dd></dl></section>';
   }
   function handoverDialog() {
-    var opt = { headers: S.key ? { 'X-Api-Key': S.key } : {} };
+    var opt = { headers: auth() };
     fetch('/api/handover', opt).then(function (r) { return r.text(); }).then(function (t) {
       modal('blue', 'Handover report', 'Current situation for the officer coming on watch',
         '<pre class="mono" style="white-space:pre-wrap;max-height:60vh;overflow:auto;margin:0">' + esc(t) + '</pre><div class="dialog-foot"><button class="btn" data-act="close">Close</button>'
@@ -617,8 +648,41 @@
       + rulesCard(v.rules)
       + '<section class="card"><h2>Incident categories</h2><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Label</th><th>Priority</th></tr></thead><tbody>'
       + v.categories.map(function (c) { return '<tr><td class="mono">' + esc(c.code) + '</td><td>' + esc(c.label) + '</td><td>' + pill(PRI[c.priority], c.priority) + '</td></tr>'; }).join('') + '</tbody></table></div></section>'
+      + accessCard()
       + '<section class="card"><h2>This browser</h2><div class="actions"><button class="btn" data-act="theme">Switch light or dark</button><button class="btn" data-act="logout">Sign out and forget the key</button><a class="btn" href="/classic">Plain dashboard</a></div></section>';
   }
+
+  // ---------- users, scout device codes and audit log ----------
+  function accessCard() {
+    if (!S.logins && S.token === '') {
+      if (!can('OFFICER')) return '';
+    }
+    var units = S.units.map(function (u) { return '<option>' + esc(u.id) + '</option>'; }).join('');
+    var h = '<section class="card"><h2>Users and access</h2>'
+      + (S.token ? '<div class="sub">Signed in as ' + esc(S.officer) + ' <span class="role-tag">' + esc(S.role) + '</span></div>' : '')
+      + '<div class="sub">Every change made here or on the network is recorded with the name of the person who made it.</div>';
+    if (can('OFFICER')) {
+      h += '<h2>Scout device codes</h2><div class="sub">Each scout phone gets its own code that only works for its unit. A new code cancels the old one.</div>'
+        + '<form class="form" data-form="devcode"><div class="inline"><label>Unit<select id="dcUnit" data-keep>' + units + '</select></label>'
+        + '<button class="btn-primary">Issue new code</button><button type="button" class="btn" data-act="devrevoke">Cancel code</button></div></form>'
+        + '<div class="actions"><button class="btn" data-act="audit">Show audit log</button></div>';
+      if (S.audit) h += '<div class="tbl-wrap audit"><table><thead><tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>Result</th><th>Details</th></tr></thead><tbody>'
+        + (S.audit.length ? S.audit.map(function (e) {
+          return '<tr><td class="mono">' + esc(e.time.replace('T', ' ')) + '</td><td>' + esc(e.user) + '</td><td>' + esc(e.role) + '</td><td class="mono">' + esc(e.action) + '</td><td class="' + (e.ok ? '' : 'bad') + '">' + (e.ok ? 'OK' : 'REFUSED') + '</td><td>' + esc(e.summary) + '</td></tr>';
+        }).join('') : '<tr><td colspan="6">none yet</td></tr>') + '</tbody></table></div>';
+    }
+    if (can('ADMIN') && S.logins !== null) {
+      h += '<h2>Users</h2>' + (S.users ? '<div class="tbl-wrap"><table><thead><tr><th>User name</th><th>Role</th><th>Can sign in</th></tr></thead><tbody>' + S.users.map(function (u) {
+          return '<tr><td class="mono">' + esc(u.name) + '</td><td>' + esc(u.role) + '</td><td>' + (u.active ? 'OK' : '-') + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '')
+        + '<form class="form" data-form="user"><div class="inline"><label>User name<input id="uName" data-keep required autocapitalize="none"></label>'
+        + '<label>Role<select id="uRole" data-keep>' + ['VIEWER', 'OPERATOR', 'OFFICER', 'ADMIN'].map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('') + '</select></label></div>'
+        + '<div class="inline"><label>Password<input id="uPass" type="password" autocomplete="new-password" placeholder="empty keeps the current password"></label>'
+        + '<label class="switch"><input type="checkbox" id="uActive" data-keep checked> Can sign in</label></div><button class="btn-primary">Save user</button></form>';
+    }
+    return h + '</section>';
+  }
+  function loadUsers() { if (!can('ADMIN')) return Promise.resolve(); return api('/api/users').then(function (u) { S.users = Array.isArray(u) ? u : null; }).catch(function () { S.users = null; }); }
 
   // ---------- dialogs, toast ----------
   function modal(color, title, sub, body) {
@@ -692,6 +756,8 @@
       case 'handover': handoverDialog(); break;
       case 'countreset': if (confirm('Reset the count check? Only do this after a full recount: the total now becomes the new starting point.')) act('/api/countcheck/reset', {}); break;
       case 'plan': S.planMode = arg; store.set('planMode', arg); render(); break;
+      case 'audit': api('/api/audit').then(function (r) { if (Array.isArray(r)) S.audit = r; else toast(r.message, 'bad'); render(); }).catch(fail); break;
+      case 'devrevoke': act('/api/devices/revoke', { unit: $('dcUnit').value }); break;
     }
   });
   document.addEventListener('change', function (e) {
@@ -715,6 +781,12 @@
       case 'announce': act('/api/announce', { text: v('anText') }, function () { $('anText').value = ''; }); break;
       case 'found': act('/api/found', { id: e.target.getAttribute('data-arg'), area: v('fdArea') }, closeModal); break;
       case 'foundperson': act('/api/foundperson', { area: v('fpArea'), details: v('fpDetails') }, function () { $('fpDetails').value = ''; }); break;
+      case 'devcode': api('/api/devices/code', { unit: v('dcUnit') }).then(function (r) {
+          if (!r.ok) { toast(r.message, 'bad'); return; }
+          modal('blue', 'Scout device codes', r.unit, '<div class="form"><div>Type this code on the scout phone of ' + esc(r.unit) + '. It replaces the unit\'s earlier code.</div><div><span class="code-big">' + esc(r.code)
+            + '</span></div><div class="dialog-foot"><button class="btn-primary" data-act="close">Close</button></div></div>');
+        }).catch(fail); break;
+      case 'user': act('/api/users', { name: v('uName'), role: v('uRole'), password: $('uPass').value || null, active: $('uActive').checked ? '1' : '0' }, function () { $('uPass').value = ''; loadUsers().then(render); }); break;
       case 'lostreport': act('/api/incidents', { category: lostCategory(), area: v('lArea'), details: v('lDetails'), contact: v('lContact') || null, language: v('lLang') || null },
         function () { $('lDetails').value = ''; }); break;
     }
@@ -752,28 +824,61 @@
   // ---------- sign in ----------
   function start() {
     $('login').hidden = true; $('app').hidden = false;
-    poll();
+    loadUsers().then(poll);
     clearInterval(S.timer); S.timer = setInterval(function () { if (!document.hidden) poll(); }, POLL_MS);
   }
+  // shows user name and password when the server has personal logins, otherwise officer name and control key
+  function loginMode(user) {
+    S.userMode = user;
+    $('lgUserBox').hidden = !user; $('lgKeyBox').hidden = user;
+    $('lgSwitch').hidden = !S.logins;
+    $('lgSwitch').textContent = user ? 'Use the control key instead' : 'Use my user name and password';
+    $('lgSubmit').textContent = user ? 'Sign in' : 'Sign in and check in';
+    (user ? $('lgUser') : $('lgOfficer')).focus();
+  }
   function logout(msg) {
-    clearInterval(S.timer); S.key = ''; store.set('key', null);
+    clearInterval(S.timer);
+    if (S.token) fetch('/api/logout', { method: 'POST', headers: auth() }).catch(function () { });
+    S.key = ''; S.token = ''; S.role = ''; S.users = null; S.audit = null;
+    store.set('key', null); store.set('token', null); store.set('role', null);
     $('app').hidden = true; $('login').hidden = false;
     $('lgErr').textContent = typeof msg === 'string' ? msg : '';
     $('lgOfficer').value = S.officer;
+    fetch('/api/me').then(function (r) { return r.json(); }).then(function (me) { S.logins = !!me.logins; loginMode(S.logins); }).catch(function () { loginMode(false); });
   }
+  $('lgSwitch').addEventListener('click', function () { loginMode(!S.userMode); });
   $('loginForm').addEventListener('submit', function (e) {
     e.preventDefault();
-    S.officer = $('lgOfficer').value.trim(); S.key = $('lgKey').value.trim();
     $('lgErr').textContent = '';
+    if (S.userMode) {
+      var body = new URLSearchParams({ user: $('lgUser').value.trim(), password: $('lgPass').value });
+      fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() }).then(function (r) { return r.json(); }).then(function (r) {
+        if (!r.ok) { $('lgErr').textContent = r.message; return; }
+        $('lgPass').value = '';
+        S.token = r.token; S.role = r.role; S.officer = r.name; S.key = '';
+        store.set('token', S.token); store.set('role', S.role); store.set('officer', S.officer); store.set('key', null);
+        // officers check in on signing in; viewers and operators do not supervise
+        (can('OFFICER') ? api('/api/checkin', {}) : Promise.resolve({ ok: true, message: 'Signed in as ' + r.name + ' (' + r.role + ')' })).then(function (c) { start(); toast(c.message, c.ok ? 'good' : 'bad'); });
+      }).catch(function (err) { $('lgErr').textContent = err.message || 'The server cannot be reached.'; });
+      return;
+    }
+    S.officer = $('lgOfficer').value.trim(); S.key = $('lgKey').value.trim(); S.token = '';
+    if (!S.officer) { $('lgErr').textContent = 'Officer name'; return; }
     api('/api/checkin', { officer: S.officer }).then(function (r) {
       if (!r.ok) { $('lgErr').textContent = r.message; return; }
-      store.set('key', S.key); store.set('officer', S.officer);
+      store.set('key', S.key); store.set('officer', S.officer); store.set('token', null);
       start(); toast(r.message, 'good');
     }).catch(function (err) { $('lgErr').textContent = err.message || 'The server cannot be reached.'; });
   });
 
+  // redraw in the new language (long generated sentences are written per language)
+  document.addEventListener('cwlang', function () { if (S.ov && !$('app').hidden) render(); });
   theme(store.get('theme') || 'dark');
-  if (S.officer) {
-    api('/api/overview').then(function () { start(); }).catch(function (e) { logout(e.auth ? '' : e.message); });
-  } else logout();
+  fetch('/api/me', { headers: auth() }).then(function (r) { return r.json(); }).then(function (me) {
+    S.logins = !!me.logins;
+    if (me.signedIn && (S.token || S.officer)) {
+      if (S.token) { S.role = me.role; S.officer = me.name; }
+      start();
+    } else logout();
+  }).catch(function () { logout('The server cannot be reached.'); });
 })();

@@ -1,0 +1,38 @@
+# Pushing a tag such as v2.0 builds CrowdWatch, runs the tests and publishes a GitHub release
+# with the ready-to-run package (program, source, docs, examples) attached as a zip.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and test
+        run: ./build.sh
+      - name: Package
+        run: |
+          NAME="CrowdWatch-${GITHUB_REF_NAME}"
+          mkdir -p "dist/$NAME"
+          cp -R program source docs examples README.md README.txt LICENSE "dist/$NAME/"
+          [ -d screenshots ] && cp -R screenshots "dist/$NAME/" || true
+          rm -rf "dist/$NAME/program/build" "dist/$NAME/program/crowdwatch-data"
+          (cd dist && zip -qr "$NAME.zip" "$NAME")
+          echo "ZIP=dist/$NAME.zip" >> "$GITHUB_ENV"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ZIP" --title "CrowdWatch $GITHUB_REF_NAME" \
+            --notes "Ready-to-run package: unzip, then run program/run.bat (Windows) or program/run.sh. Needs Java 17 or newer. See README.md and docs/ for the guide." \
+            || gh release upload "$GITHUB_REF_NAME" "$ZIP" --clobber

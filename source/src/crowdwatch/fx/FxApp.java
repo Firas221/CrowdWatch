@@ -59,6 +59,8 @@ public class FxApp extends Application {
 
     private CrowdMonitor m;
     private volatile Database db;
+    // logins, device codes and the audit log (shared with the network server); null if the accounts file cannot be read
+    private crowdwatch.net.Accounts accounts;
     private Stage stage;
     private Scene scene;
     private final SimulatedFeed sim = new SimulatedFeed(1500, 7);
@@ -169,6 +171,7 @@ public class FxApp extends Application {
             db = null;
             note = App.loadOrSeed(m, null, p);
         }
+        openAccounts();
         buildWindow();
         useGateway(m.venue());
         watchdog = new Watchdog(m);
@@ -742,13 +745,18 @@ public class FxApp extends Application {
         ctl.setPromptText("Control key");
         PasswordField scout = new PasswordField();
         scout.setPromptText("Scout key (optional)");
+        CheckBox https = new CheckBox("HTTPS (encrypted)");
         Button start = button("Start server", "btn-primary", e -> {
             try {
                 if (api != null) api.stop();
-                if (ctl.getText().isBlank() && !confirm("No control key: anyone on the network can read and change everything. Start anyway (demonstration only)?")) return;
+                boolean logins = accounts != null && accounts.hasUsers();
+                if (ctl.getText().isBlank() && !logins && !confirm("No users and no control key: anyone on the network can read and change everything. Start anyway (demonstration only)?")) return;
                 api = new crowdwatch.net.ApiServer(m, ctl.getText(), scout.getText(), crowdwatch.net.ApiServer.RATE_LIMIT);
-                int p = api.start(Integer.parseInt(port.getText().trim()));
-                serverState.setText("Server running on port " + p + ": dashboard http://<this-computer>:" + p + "/  scouts http://<this-computer>:" + p + "/scout");
+                api.setAccounts(accounts);
+                int p = api.start(Integer.parseInt(port.getText().trim()), https.isSelected() ? App.tls() : null);
+                String sc = https.isSelected() ? "https" : "http";
+                serverState.setText("Server running on port " + p + ": dashboard " + sc + "://<this-computer>:" + p + "/  scouts " + sc + "://<this-computer>:" + p + "/scout"
+                    + (logins ? "  - personal logins on" : ""));
                 say("Server started on port " + p + ".");
             } catch (Exception ex) { say("Server not started: " + ex.getMessage()); }
         });
@@ -758,8 +766,90 @@ public class FxApp extends Application {
         GridPane g = grid();
         g.addRow(0, new Label("Port"), port);
         g.addRow(1, new Label("Keys"), new HBox(6, ctl, scout));
-        g.addRow(2, new Label(""), new HBox(6, start, stop));
-        return new VBox(14, card("Venue settings", settingsText, automationBox, save), card("Network server for other terminals and scout devices", g, serverState));
+        g.addRow(2, new Label(""), https);
+        g.addRow(3, new Label(""), new HBox(6, start, stop));
+        Button users = button("Users and roles...", "btn", e -> usersDialog());
+        Button devices = button("Scout device codes...", "btn", e -> deviceDialog());
+        Button audit = button("Audit log...", "btn", e -> auditDialog());
+        Label accNote = new Label("Personal logins: each person signs in with a name and password and gets a role (VIEWER, OPERATOR, OFFICER or ADMIN). "
+            + "Each scout phone can get its own code that only works for its unit. Every change, here or on the network, is written to the audit log.");
+        accNote.setWrapText(true);
+        accNote.getStyleClass().add("sub");
+        return new VBox(14, card("Venue settings", settingsText, automationBox, save), card("Network server for other terminals and scout devices", g, serverState),
+            card("Users, scout devices and audit log", accNote, new HBox(6, users, devices, audit)));
+    }
+
+    /** Users and roles: lists the users and adds or changes one. */
+    private void usersDialog() {
+        if (accounts == null) { say("The accounts file cannot be read: " + App.ACCOUNTS_FILE.toAbsolutePath()); return; }
+        StringBuilder list = new StringBuilder();
+        for (crowdwatch.net.Accounts.User u : accounts.users()) list.append(u.name).append("  ").append(u.role).append(u.active ? "" : "  (switched off)").append('\n');
+        TextArea current = new TextArea(list.length() == 0 ? "No users yet: the first one should be an ADMIN." : list.toString());
+        current.setEditable(false);
+        current.setPrefRowCount(6);
+        TextField name = new TextField();
+        ComboBox<crowdwatch.net.Accounts.Role> role = new ComboBox<>(FXCollections.observableArrayList(crowdwatch.net.Accounts.Role.values()));
+        role.setValue(crowdwatch.net.Accounts.Role.OPERATOR);
+        PasswordField pw = new PasswordField(), pw2 = new PasswordField();
+        pw.setPromptText("empty keeps the current password");
+        CheckBox active = new CheckBox("Can sign in");
+        active.setSelected(true);
+        GridPane g = grid();
+        g.addRow(0, new Label("User name"), name);
+        g.addRow(1, new Label("Role"), role);
+        g.addRow(2, new Label("Password"), pw);
+        g.addRow(3, new Label("Again"), pw2);
+        g.addRow(4, new Label(""), active);
+        if (!dialog("Users and roles", new VBox(10, current, g))) return;
+        if (!pw.getText().equals(pw2.getText())) { act(Result.fail("The two passwords differ - nothing changed.")); return; }
+        String done = accounts.setUser(name.getText(), role.getValue(), pw.getText().isEmpty() ? null : pw.getText());
+        if (done == null) done = accounts.setActive(name.getText(), active.isSelected());
+        act(done == null ? Result.ok("User " + name.getText().trim() + " saved as " + role.getValue() + (active.isSelected() ? "." : " (switched off).")) : Result.fail(done));
+    }
+
+    /** Scout device codes: issues or cancels the code of one unit's phone. */
+    private void deviceDialog() {
+        if (accounts == null) { say("The accounts file cannot be read."); return; }
+        ComboBox<String> unit = new ComboBox<>();
+        synchronized (m) { unit.getItems().setAll(m.unitTree().keysInOrder().toArray(new String[0])); }
+        if (!unit.getItems().isEmpty()) unit.setValue(unit.getItems().get(0));
+        CheckBox cancel = new CheckBox("Cancel the unit's code instead of issuing a new one");
+        if (!dialog("Scout device codes", new VBox(10, new Label("Unit"), unit, cancel)) || unit.getValue() == null) return;
+        String u = unit.getValue();
+        if (cancel.isSelected()) { act(accounts.revokeDevice(u) ? Result.ok("Device code of " + u + " cancelled.") : Result.fail(u + " has no device code.")); return; }
+        String code = accounts.issueDevice(u);
+        act(Result.ok("New device code issued for " + u + "."));
+        TextField shown = new TextField(code);
+        shown.setEditable(false);
+        shown.setStyle("-fx-font-size: 22px; -fx-font-family: monospace;");
+        dialog("Device code for " + u, new VBox(10, new Label("Type this code on the scout phone of " + u + ". It replaces the unit's earlier code."), shown));
+    }
+
+    /** Audit log: the newest entries from the venue's database (or from memory). */
+    private void auditDialog() {
+        String[] lines = null;
+        Database d = db;
+        if (d != null) try { lines = d.readAudit(300); } catch (Exception ignored) { }
+        if (lines == null && accounts != null) {
+            crowdwatch.net.Accounts.Entry[] e = accounts.recentAudit(300);
+            lines = new String[e.length];
+            for (int k = 0; k < e.length; k++) lines[k] = e[k].toString();
+        }
+        TextArea t = new TextArea(lines == null || lines.length == 0 ? "No entries yet." : String.join("\n", lines));
+        t.setEditable(false);
+        t.setPrefSize(900, 500);
+        t.setStyle("-fx-font-family: monospace;");
+        dialog("Audit log (newest first)", t);
+    }
+
+    /** Shows content in an OK / Cancel dialog. @return true for OK */
+    private boolean dialog(String title, Node content) {
+        Dialog<ButtonType> d = new Dialog<>();
+        d.setTitle(title);
+        d.getDialogPane().setContent(content);
+        d.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+        if (stage != null && stage.getScene() != null) d.getDialogPane().getStylesheets().setAll(stage.getScene().getStylesheets());
+        return d.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
     }
 
     // ================================================================ incident details panel and dialogs
@@ -1525,8 +1615,19 @@ public class FxApp extends Application {
 
     // ================================================================ actions and helpers
 
-    /** Shows the result of an action and refreshes. */
+    /** Opens the accounts and the audit log for the current venue (again after a venue switch). */
+    private void openAccounts() {
+        try { accounts = App.openAccounts(db, m.venue() == null ? "venue" : m.venue().code); }
+        catch (java.io.IOException e) { accounts = null; }
+        if (api != null) api.setAccounts(accounts);
+    }
+
+    /** Shows the result of an action, writes it to the audit log (role DESKTOP) and refreshes. */
     private void act(Result r) {
+        if (accounts != null) {
+            String who = officerField.getText().isBlank() ? (m.officer() == null ? "desktop" : m.officer()) : officerField.getText().trim();
+            accounts.record(m.now(), who, "DESKTOP", "desktop", r.message, r.ok);
+        }
         say((r.ok ? "" : "Refused: ") + r.message);
         refresh();
     }
@@ -1599,6 +1700,7 @@ public class FxApp extends Application {
             try { note = App.loadOrSeed(m, next, p); }
             catch (IllegalStateException e) { db = null; note = e.getMessage() + " " + App.loadOrSeed(m, null, p); }
         }
+        openAccounts();
         venueChanged();
         say(note);
     }
