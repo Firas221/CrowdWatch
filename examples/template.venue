@@ -1,0 +1,108 @@
+# CrowdWatch venue template - copy, rename, edit, then open it from Venue > Open venue file...
+#
+# venue:      display name
+# code:       short id, also the database folder name
+# thresholds: % of capacity where MODERATE, HIGH and CRITICAL start
+# area:       ID | name | sector | type | capacity | restricted (optional)
+# link:       AREA AREA minutes|auto [people per minute] [stairs|lift]   (two-way; auto = worked out from the drawing, see Layout below)
+# category:   CODE | label | CRITICAL / HIGH / NORMAL / LOW | required skill (blank = any unit) | personal (optional: erase details on resolve)
+# unit:       ID | name | starting area | skills and languages, comma separated
+# occupancy:  AREA count   (optional starting counts)
+#
+# Automation and emergency plan (all optional):
+# auto:        CATEGORY HIGH|CRITICAL [trend]   report this category automatically when an area reaches the level
+#              (and, with "trend", when it is expected to become CRITICAL within 10 minutes)
+# exit:        AREA AREA ...   exits and assembly points used by the evacuation plan
+# supervision: minutes   a security officer must check in at least this often (default 15)
+# ack:         minutes   time a unit has to acknowledge a task before a reminder; after a second wait it is reassigned (default 2)
+# gateway:     URL       radio or SMS gateway that receives every message sent to units (HTTP POST)
+# archive:     24h|30m   how long resolved incidents stay in memory before moving to the archive tables (24h)
+#
+# Further automation (all optional; the value in brackets is used when the line is missing):
+# stale:       minutes   a sensor silent this long marks its area's data stale and asks a unit to count (5)
+# jump:        percent   a sensor count changing by more than this % of capacity within a minute is suspect (40)
+# onscene:     minutes   after acknowledging, a unit not on scene is reminded; after twice this, escalated and backup sent (10)
+# autoclose:   minutes   an automatic crowd incident closes once its area has been below HIGH this long (10)
+# maxwait:     minutes   an incident waiting this long for a qualified unit gets the nearest free unit as a stand-in (10)
+# preposition: minutes|off   send a free unit to an area expected to reach CRITICAL within this time (15)
+# reconcile:   percent|off   alert when the areas' total and the gate counts differ by more than this (at least 50 people) for 5 min (5)
+#              gate counts come from counters that POST /api/move with from=OUTSIDE (entering) or to=OUTSIDE (leaving) at an exit
+# reinforce:   HIGH CRITICAL   units wanted at a crowded area at HIGH and at CRITICAL; the nearest free ones are moved there (2 4; 0 0 = off)
+# reinforceskills: skill skill ...   skills sent first as reinforcement (crowd-control security); first-aid units without them are kept free
+# reinforcemax: minutes|off   at HIGH only units within this walk are sent; at CRITICAL any distance (10)
+# reinforcehold: minutes   reinforcements return to their own posts once the area has been below HIGH this long (10)
+# holdflow:    on|off    tell units next to a HIGH area to hold people back (on)
+# cover:       on|off    keep at least one free unit in every sector (on)
+# propose:     minutes   an area CRITICAL and still rising this long makes the system propose an evacuation (10)
+# signs:       on|off    draft public screen / PA messages for an officer to approve (on)
+# meeting:     AREA [AREA ...]   where found lost persons are brought; with one per site the nearest reachable one is used (default: where they were reported)
+# lost:        radius widen   first search radius and how often it widens, in walking minutes (5 5)
+# event:       HH:MM | minutes | AREA or sector | name   a daily peak: thresholds start earlier and units are placed beforehand
+# eventlead:   minutes   how long before an event the preparation starts (30)
+# eventoffset: points    how many percentage points earlier the levels start during an event (10)
+# shift:       HH:MM HH:MM ...   shift changes: a handover report is written at each
+# unit lines may end with | HH:MM-HH:MM  : working hours; the unit goes off and on duty by itself
+
+venue: City Centre Mall
+code: mall
+thresholds: 50 75 90
+auto: CROWD HIGH trend
+exit: ENT-N ENT-S PARK
+supervision: 15
+ack: 2
+meeting: ATRIUM
+event: 13:00 | 60 | ATRIUM | Lunchtime peak
+shift: 08:00 16:00
+
+area: ENT-N | North Entrance | Ground | ENTRANCE | 600
+area: ENT-S | South Entrance | Ground | ENTRANCE | 600
+area: ATRIUM | Central Atrium | Ground | HALL | 2500
+area: FOOD | Food Court | Level 1 | HALL | 1800
+area: CINEMA | Cinema Lobby | Level 2 | HALL | 900
+area: PARK | Car Park Lifts | Basement | TRANSIT | 400
+area: CCTV | Control Room | Ground | RESTRICTED | 20 | restricted
+
+# link: AREA AREA minutes|auto [people per minute] [stairs|lift]   ("auto" works the time out from the drawing)
+link: ENT-N ATRIUM auto 400
+link: ENT-S ATRIUM auto 400
+link: ATRIUM CCTV auto
+link: ATRIUM FOOD 3 300 stairs
+link: FOOD CINEMA 3 200 stairs
+link: ATRIUM CINEMA 2 40 lift
+link: ATRIUM PARK 4 150 stairs
+
+# Layout (optional): a drawing of the venue and where each area is on it, in the drawing's units.
+# map:      FILE WIDTH HEIGHT   a PNG or JPG next to this file (shown in the consoles under the live areas)
+# scale:    metres per map unit (needed for "auto" link times; walking speed 60 m/min)
+# pos:      AREA x y width height
+# exitflow: EXIT people-per-minute   lets the evacuation plan spread people over the exits and estimate the time to clear
+# zone:     NAME | AREA AREA ...   fire zones: an alarm proposes evacuating its zone; the console can evacuate one
+# lifts are never used in an evacuation plan
+map: template-map.png 1200 700
+scale: 0.5
+pos: ENT-N 210 40 160 70
+pos: ATRIUM 150 160 280 260
+pos: ENT-S 210 470 160 70
+pos: CCTV 460 200 70 60
+pos: FOOD 640 160 220 260
+pos: CINEMA 930 160 220 260
+pos: PARK 640 520 220 120
+exitflow: ENT-N 300
+exitflow: ENT-S 300
+exitflow: PARK 120
+zone: Ground floor | ENT-N ENT-S ATRIUM CCTV
+zone: Level 1 | FOOD
+zone: Level 2 | CINEMA
+
+category: LOST_CHILD | Lost child | CRITICAL | lost-person | personal
+category: MEDICAL | Medical | CRITICAL | first-aid
+category: SECURITY | Theft / disorder | HIGH | security
+category: CROWD | Crowd build-up | HIGH | crowd-control
+category: CLEANING | Spill / cleaning | LOW |
+
+unit: G1 | Guard North | ENT-N | Arabic, English, security, lost-person, crowd-control
+unit: G2 | Guard Food Court | FOOD | Arabic, English, first-aid, lost-person
+unit: H1 | Host Desk | ATRIUM | Arabic, English, French | 08:00-16:00
+
+occupancy: ATRIUM 1300
+occupancy: FOOD 1450

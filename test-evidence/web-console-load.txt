@@ -1,0 +1,1 @@
+300 consoles x 40 requests: ok 12000, failed 0, 10161 req/s, median 16 ms, p99 273 ms, max 367 ms

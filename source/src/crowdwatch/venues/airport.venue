@@ -1,0 +1,111 @@
+# Every line, including the optional automation and layout lines, is explained in examples/template.venue.
+# area: ID | name | sector | type | capacity | [restricted]
+# link: AREA AREA walk-minutes
+# category: CODE | label | CRITICAL/HIGH/NORMAL/LOW | required-skill | [personal]
+# unit: ID | name | starting area | skills and languages, comma separated
+venue: Sample International Airport
+code: airport
+thresholds: 60 80 95
+
+# automation: report CROWD automatically when an area reaches HIGH (and on a TREND warning)
+auto: CROWD HIGH trend
+# exits and assembly points for the evacuation plan
+exit: CURB-1 CURB-2 TRAIN
+# a security officer must check in every 15 minutes; units must acknowledge a task within 2 minutes
+supervision: 15
+ack: 2
+# lost persons are brought to the information desk in the arrivals hall; scheduled peaks; shift changes (handover report)
+meeting: ARRIVALS-1
+event: 18:00 | 90 | Airside T1 | Evening departure bank
+event: 06:30 | 60 | Landside T1 | Morning check-in peak
+shift: 06:00 14:00 22:00
+# gateway: https://radio-gateway.example/send   (optional: radio or SMS system that relays unit messages)
+
+area: CURB-1 | Terminal 1 Kerbside | Landside T1 | ENTRANCE | 900
+area: CHECKIN-1 | Terminal 1 Check-in Hall | Landside T1 | HALL | 1400
+area: SEC-1 | Terminal 1 Security Screening | Landside T1 | CHECKPOINT | 450
+area: PASS-1 | Terminal 1 Passport Control | Airside T1 | CHECKPOINT | 380
+area: DUTYFREE-1 | Terminal 1 Duty Free Plaza | Airside T1 | HALL | 1100
+area: GATE-A | Gates A1-A8 | Airside T1 | GATE | 1600
+area: GATE-B | Gates B1-B6 | Airside T1 | GATE | 1200
+area: BAGGAGE-1 | Terminal 1 Baggage Claim | Landside T1 | HALL | 1000
+area: ARRIVALS-1 | Terminal 1 Arrivals Hall | Landside T1 | HALL | 1300
+area: TRAIN | Airport Rail Station | Landside | TRANSIT | 1500
+area: CURB-2 | Terminal 2 Kerbside | Landside T2 | ENTRANCE | 800
+area: CHECKIN-2 | Terminal 2 Check-in Hall | Landside T2 | HALL | 1200
+area: SEC-2 | Terminal 2 Security Screening | Landside T2 | CHECKPOINT | 400
+area: GATE-C | Gates C1-C10 | Airside T2 | GATE | 1800
+area: APRON | Apron and Stand Area | Airside | RESTRICTED | 150 | restricted
+area: OPS | Operations Control Room | Landside | RESTRICTED | 40 | restricted
+
+link: CURB-1 CHECKIN-1 2
+link: CHECKIN-1 SEC-1 3 300
+link: SEC-1 PASS-1 2 250
+link: PASS-1 DUTYFREE-1 2 400
+link: DUTYFREE-1 GATE-A 4
+link: DUTYFREE-1 GATE-B 5
+link: GATE-A GATE-B 3
+link: GATE-B GATE-C 8 250
+link: ARRIVALS-1 BAGGAGE-1 2
+link: BAGGAGE-1 PASS-1 4 200
+link: ARRIVALS-1 CURB-1 2
+link: ARRIVALS-1 TRAIN 5 300
+link: TRAIN CURB-2 4
+link: CURB-2 CHECKIN-2 2
+link: CHECKIN-2 SEC-2 3
+link: SEC-2 GATE-C 4 250
+link: GATE-A APRON 3
+link: GATE-C APRON 3
+link: CHECKIN-1 OPS 3
+
+category: LOST_PERSON | Lost or separated person | CRITICAL | lost-person | personal
+category: MEDICAL | Medical emergency | CRITICAL | first-aid
+category: SECURITY | Security concern / unattended bag | CRITICAL | security
+category: CROWD | Crowd build-up / queue control | HIGH | crowd-control
+category: PRM | Reduced-mobility assistance | NORMAL | wheelchair | personal
+category: INFO | Directions / information | LOW |
+
+unit: A01 | Landside Patrol 1 | CHECKIN-1 | Arabic, English, crowd-control, lost-person
+unit: A02 | Security Team Alpha | SEC-1 | Arabic, English, security, crowd-control
+unit: A03 | Medical Responder 1 | DUTYFREE-1 | Arabic, English, French, first-aid
+unit: A04 | PRM Assist 1 | ARRIVALS-1 | Arabic, English, wheelchair
+unit: A05 | Gate Host A | GATE-A | English, Chinese, lost-person, crowd-control
+unit: A06 | Terminal 2 Patrol | CHECKIN-2 | Arabic, English, Russian, crowd-control, lost-person
+unit: A07 | Security Team Bravo | SEC-2 | Arabic, English, security
+unit: A08 | PRM Assist 2 | GATE-C | English, German, wheelchair, first-aid
+
+occupancy: CHECKIN-1 980
+occupancy: SEC-1 395
+occupancy: PASS-1 210
+occupancy: GATE-A 900
+occupancy: ARRIVALS-1 600
+occupancy: TRAIN 700
+occupancy: CHECKIN-2 450
+
+# ---------------- layout (sample): drawing, positions, exit flows, fire zones
+# link lines above may end with the people per minute a corridor or checkpoint can carry
+map: airport-map.png 1600 1000
+scale: 1.5
+pos: APRON 40 20 1520 70
+pos: GATE-A 60 110 300 150
+pos: GATE-B 400 110 300 150
+pos: GATE-C 1100 110 440 150
+pos: DUTYFREE-1 150 300 330 100
+pos: PASS-1 150 420 300 90
+pos: SEC-1 80 540 160 100
+pos: OPS 250 560 90 70
+pos: BAGGAGE-1 360 540 200 110
+pos: CHECKIN-1 80 670 260 120
+pos: ARRIVALS-1 360 670 200 120
+pos: CURB-1 80 820 480 70
+pos: TRAIN 640 820 330 120
+pos: SEC-2 1150 420 200 100
+pos: CHECKIN-2 1100 560 300 120
+pos: CURB-2 1060 820 420 70
+exitflow: CURB-1 900
+exitflow: CURB-2 700
+exitflow: TRAIN 400
+zone: T1 Airside | PASS-1 DUTYFREE-1 GATE-A GATE-B
+zone: T1 Landside | CURB-1 CHECKIN-1 SEC-1 ARRIVALS-1 BAGGAGE-1
+zone: Terminal 2 | CURB-2 CHECKIN-2 SEC-2 GATE-C
+zone: Rail station | TRAIN

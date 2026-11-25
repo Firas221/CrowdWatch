@@ -1,0 +1,91 @@
+# Every line, including the optional automation and layout lines, is explained in examples/template.venue.
+venue: Sample National Stadium
+code: stadium
+thresholds: 55 80 95
+
+auto: CRUSH HIGH trend
+exit: PLAZA-N PLAZA-S METRO
+supervision: 15
+ack: 2
+# lost children are brought to the South Plaza family point; kick-off and full time are the peaks
+meeting: PLAZA-S
+event: 19:00 | 45 | Outer ring | Gates open before kick-off
+event: 21:00 | 40 | Outer ring | Full time - crowd leaving
+shift: 15:00 23:00
+
+area: PLAZA-N | North Plaza | Outer ring | ENTRANCE | 6000
+area: PLAZA-S | South Plaza | Outer ring | ENTRANCE | 6000
+area: TURN-N | North Turnstiles | Outer ring | CHECKPOINT | 1200
+area: TURN-S | South Turnstiles | Outer ring | CHECKPOINT | 1200
+area: CONC-N | North Concourse | Inner ring | CONCOURSE | 5000
+area: CONC-E | East Concourse | Inner ring | CONCOURSE | 4000
+area: CONC-S | South Concourse | Inner ring | CONCOURSE | 5000
+area: CONC-W | West Concourse | Inner ring | CONCOURSE | 4000
+area: STAND-N | North Stand | Bowl | SEATING | 15000
+area: STAND-E | East Stand | Bowl | SEATING | 12000
+area: STAND-S | South Stand | Bowl | SEATING | 15000
+area: STAND-W | West Stand (VIP) | Bowl | SEATING | 10000
+area: METRO | Stadium Metro Station | Outer ring | TRANSIT | 4000
+area: PITCH | Pitch and Tunnel | Bowl | RESTRICTED | 200 | restricted
+
+link: METRO PLAZA-N 6
+link: METRO PLAZA-S 9
+link: PLAZA-N TURN-N 2 1200
+link: PLAZA-S TURN-S 2 1200
+link: TURN-N CONC-N 1 600
+link: TURN-S CONC-S 1 600
+link: CONC-N CONC-E 3
+link: CONC-E CONC-S 3
+link: CONC-S CONC-W 3
+link: CONC-W CONC-N 3
+link: CONC-N STAND-N 1 900
+link: CONC-E STAND-E 1 700
+link: CONC-S STAND-S 1 900
+link: CONC-W STAND-W 1 600
+link: STAND-W PITCH 2
+
+category: LOST_CHILD | Lost child | CRITICAL | lost-person | personal
+category: MEDICAL | Medical emergency | CRITICAL | first-aid
+category: FIGHT | Disorder / fight | CRITICAL | security
+category: CRUSH | Crowd pressure at barrier | CRITICAL | crowd-control
+category: ACCESS | Accessibility help | NORMAL | wheelchair | personal
+category: FACILITY | Facility fault (lift, toilet, light) | LOW |
+
+unit: S01 | North Steward Team | CONC-N | Arabic, English, crowd-control, lost-person
+unit: S02 | South Steward Team | CONC-S | Arabic, English, crowd-control, lost-person
+unit: S03 | Police Liaison | TURN-N | Arabic, security, crowd-control
+unit: S04 | Medical Post East | CONC-E | Arabic, English, first-aid
+unit: S05 | Medical Post West | CONC-W | Arabic, French, first-aid
+unit: S06 | Access Team | PLAZA-S | Arabic, English, wheelchair
+
+occupancy: PLAZA-N 3900
+occupancy: TURN-N 1010
+occupancy: STAND-N 11800
+occupancy: STAND-S 9000
+occupancy: METRO 2600
+
+# ---------------- layout (sample): drawing, positions, exit flows, fire zones
+# the turnstiles (600 people a minute each way) are the bottleneck when the stadium empties
+map: stadium-map.png 1600 1000
+scale: 0.8
+pos: METRO 60 30 220 120
+pos: PLAZA-N 550 15 500 70
+pos: TURN-N 700 95 200 55
+pos: CONC-N 500 170 600 60
+pos: CONC-W 330 300 70 400
+pos: CONC-E 1200 300 70 400
+pos: CONC-S 500 770 600 60
+pos: STAND-N 560 250 480 110
+pos: STAND-W 420 380 150 240
+pos: STAND-E 1030 380 150 240
+pos: STAND-S 560 640 480 110
+pos: PITCH 600 380 420 240
+pos: TURN-S 700 850 200 55
+pos: PLAZA-S 550 915 500 70
+exitflow: PLAZA-N 2500
+exitflow: PLAZA-S 2500
+exitflow: METRO 800
+zone: North | STAND-N CONC-N TURN-N
+zone: South | STAND-S CONC-S TURN-S
+zone: East | STAND-E CONC-E
+zone: West | STAND-W CONC-W

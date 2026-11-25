@@ -1,0 +1,5 @@
+# created when CrowdWatch runs: databases, backups, handover reports and build output
+crowdwatch-data/
+build/
+classes/
+*.log

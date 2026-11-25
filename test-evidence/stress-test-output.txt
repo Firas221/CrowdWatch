@@ -1,0 +1,14 @@
+CrowdWatch - concurrency stress test (15 seconds)
+
+Threads running at the same time:
+  - simulated sensor feed updating counts every 1 ms
+  - 2 reader threads: summary, areasByLoad, route, openIncidentsByPriority, unitsSorted
+  - 2 writer threads: reportIncident, escalate, resolve, adjustOccupancy
+  - 2 web clients: GET /, /api/areas, /api/incidents, /api/alerts, /api/route, POST /api/occupancy
+
+Before (read methods not synchronized):
+  errors: 51 (NullPointerException inside LinkedList/AVL tree while another thread was changing it)
+  the simulated-feed thread crashed
+
+After (every read method synchronized; GUI and reports hold the monitor's lock):
+  operations: 21638, errors: 0, no thread hung (no deadlock)

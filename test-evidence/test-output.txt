@@ -1,0 +1,694 @@
+CROWDWATCH - TEST EVIDENCE AND TRACES
+=====================================
+
+PART A - DATA STRUCTURES
+
+  Trace - AVL shape:
+    M
+        |-- D
+        |   |-- B
+        |   \-- F
+        \-- T
+            |-- R
+            \-- W
+  Trace - search(F):
+    M go left
+    D go right
+    F (found)
+TC-01  AVL search and in-order traversal
+  Expected: [B -> D -> F -> M -> R -> T -> W]
+  Actual:   [B -> D -> F -> M -> R -> T -> W]
+  Result:   PASS
+
+  Trace - delete(M) - two children:
+    M (two children: replaced by successor R)
+    T go left
+    R (removed)
+TC-02  AVL delete of the root keeps the order
+  Expected: [B -> D -> F -> R -> T -> W] height 3
+  Actual:   [B -> D -> F -> R -> T -> W] height 3
+  Result:   PASS
+
+  Trace - AVL after inserting 1..7 in order (a plain BST would be a 7-node chain):
+    4
+        |-- 2
+        |   |-- 1
+        |   \-- 3
+        \-- 6
+            |-- 5
+            \-- 7
+TC-03  1000 sequential incident IDs stay balanced (plain BST height would be 1000)
+  Expected: height 10, search path 10 nodes or fewer
+  Actual:   height 10, search path 10 nodes or fewer
+  Result:   PASS
+
+TC-04  AVL stays balanced after 900 deletions
+  Expected: 100 keys, height 7
+  Actual:   100 keys, height 7
+  Result:   PASS
+
+TC-05  Circular buffer keeps the newest readings and overwrites the oldest
+  Expected: [3, 4, 5]
+  Actual:   [3, 4, 5]
+  Result:   PASS
+
+TC-06  Queue is FIFO and supports removal of a cancelled item
+  Expected: I1 | front [I2] rear
+  Actual:   I1 | front [I2] rear
+  Result:   PASS
+
+TC-07  Min-heap polls in ascending order
+  Expected: 3 7 11 19 25 42
+  Actual:   3 7 11 19 25 42
+  Result:   PASS
+
+TC-08  Merge sort is stable (equal keys keep input order)
+  Expected: ABCD
+  Actual:   ABCD
+  Result:   PASS
+
+  Trace - Dijkstra visit order from S:
+    S (0)
+    A (1)
+    B (2)
+    T (4)
+TC-09  Dijkstra finds the cheaper two-hop path
+  Expected: [S -> B -> T] cost 4
+  Actual:   [S -> B -> T] cost 4
+  Result:   PASS
+
+PART B - AIRPORT PROFILE
+
+TC-10  Airport profile loads areas, links, categories and units
+  Expected: 16 areas, 19 links, 6 categories, 8 units
+  Actual:   16 areas, 19 links, 6 categories, 8 units
+  Result:   PASS
+
+TC-11  Occupancy 432/450 (96%) at security is CRITICAL and raises an alert
+  Expected: CRITICAL CROWD
+  Actual:   CRITICAL CROWD
+  Result:   PASS
+
+TC-12  Lost person at GATE-B goes to the nearest unit with the lost-person skill
+  Expected: A05
+  Actual:   A05
+  Result:   PASS
+
+TC-13  Medical at GATE-A goes to the nearest first-aid unit
+  Expected: A03
+  Actual:   A03
+  Result:   PASS
+
+TC-14  Restricted area refused without approval
+  Expected: false
+  Actual:   false
+  Result:   PASS
+
+TC-15  Restricted area allowed with approval
+  Expected: true
+  Actual:   true
+  Result:   PASS
+
+TC-16  Third concurrent need with no free unit waits in its priority queue
+  Expected: PRM->A08, bag->A02, second bag QUEUED
+  Actual:   PRM->A08, bag->A02, second bag QUEUED
+  Result:   PASS
+
+  Trace - queues:
+    CRITICAL front [I1005] rear
+    NORMAL   front [] rear
+TC-17  Low-priority request with any unit free is still assigned
+  Expected: ASSIGNED
+  Actual:   ASSIGNED
+  Result:   PASS
+
+TC-18  Freed unit serves the CRITICAL queue first
+  Expected: I1005 ASSIGNED to A07
+  Actual:   I1005 ASSIGNED to A07
+  Result:   PASS
+
+TC-19  Unit with an open incident cannot go off duty
+  Expected: false
+  Actual:   false
+  Result:   PASS
+
+TC-20  On scene is refused for a resolved incident
+  Expected: false
+  Actual:   false
+  Result:   PASS
+
+TC-21  Resolving a personal-data incident erases details and contact
+  Expected: [erased on resolve] / [erased on resolve] / 23 min
+  Actual:   [erased on resolve] / [erased on resolve] / 23 min
+  Result:   PASS
+
+  Trace - incident I1001 history (linked list):
+    01/12 09:00 Lost or separated person reported at GATE-B (CRITICAL)
+    01/12 09:00 Assigned to A05
+    01/12 09:00 Task sent to A05's device
+    01/12 09:05 A05 on scene
+    01/12 09:23 Resolved after 23 min: Reunited with mother; personal data erased
+TC-22  Escalation moves a waiting incident up the queues
+  Expected: HIGH [I1007]
+  Actual:   HIGH [I1007]
+  Result:   PASS
+
+TC-23  Shortest public route never passes the restricted apron
+  Expected: [CHECKIN-1 -> SEC-1 -> PASS-1 -> DUTYFREE-1 -> GATE-B -> GATE-C] 20 min
+  Actual:   [CHECKIN-1 -> SEC-1 -> PASS-1 -> DUTYFREE-1 -> GATE-B -> GATE-C] 20 min
+  Result:   PASS
+
+  Trace - crowd-aware Dijkstra visit order:
+    CHECKIN-1 (0)
+    CURB-1 (2)
+    ARRIVALS-1 (4)
+    BAGGAGE-1 (6)
+    TRAIN (9)
+    PASS-1 (10)
+    DUTYFREE-1 (12)
+    CURB-2 (13)
+    CHECKIN-2 (15)
+    GATE-A (16)
+    GATE-B (17)
+    SEC-2 (18)
+    GATE-C (22)
+    SEC-1 (30)
+TC-24  Crowd-aware route avoids the CRITICAL checkpoint
+  Expected: [CHECKIN-1 -> CURB-1 -> ARRIVALS-1 -> TRAIN -> CURB-2 -> CHECKIN-2 -> SEC-2 -> GATE-C] 22 min
+  Actual:   [CHECKIN-1 -> CURB-1 -> ARRIVALS-1 -> TRAIN -> CURB-2 -> CHECKIN-2 -> SEC-2 -> GATE-C] 22 min
+  Result:   PASS
+
+TC-25  CSV adapter applies valid rows and logs bad ones
+  Expected: 2 applied, 2 problems, GATE-A HIGH
+  Actual:   2 applied, 2 problems, GATE-A HIGH
+  Result:   PASS
+
+TC-26  External listener receives the alert and the all-clear
+  Expected: 2
+  Actual:   2
+  Result:   PASS
+
+TC-27  Simulated sensor tick updates areas through the same API
+  Expected: true
+  Actual:   true
+  Result:   PASS
+
+  Trace - GATE-A readings (circular buffer):
+    [09:00=900, 09:05=1100, 09:07=1200]
+TC-28  Trend warning: GATE-A at 75% but rising ~43/min -> CRITICAL in about 8 min, before the HIGH alert
+  Expected: no warning at 10.5 min, TREND at 8 min, level MODERATE
+  Actual:   no warning at 10.5 min, TREND at 8 min, level MODERATE
+  Result:   PASS
+
+TC-29  Distance cache: Dijkstra runs once per area, later dispatches reuse it
+  Expected: 1 miss, hits > 0
+  Actual:   1 miss, hits > 0
+  Result:   PASS
+
+TC-30  Cache is rebuilt when the layout changes
+  Expected: 2
+  Actual:   2
+  Result:   PASS
+
+PART C - SAME CODE, OTHER VENUES
+
+TC-31  Stadium: lost child in the East Stand goes to the nearest steward team
+  Expected: S01
+  Actual:   S01
+  Result:   PASS
+
+TC-32  Stadium: turnstile at 96% is CRITICAL
+  Expected: CRITICAL
+  Actual:   CRITICAL
+  Result:   PASS
+
+TC-33  Umrah: lost pilgrim at the Masa'a goes to Mataf Team 5
+  Expected: T05
+  Actual:   T05
+  Result:   PASS
+
+TC-34  Umrah: Makkah and Madinah are separate graphs (no cross-city dispatch)
+  Expected: true
+  Actual:   true
+  Result:   PASS
+
+TC-35  A new venue defined only by a text profile works with no code change
+  Expected: HIGH, G1
+  Actual:   HIGH, G1
+  Result:   PASS
+
+PART D - NETWORK API (MULTI-TERMINAL)
+
+  Trace - POST /api/incidents response:
+    200 {"ok":true,"message":"I1001 recorded and assigned to A03 at DUTYFREE-1."}
+TC-36  Remote terminal: changes need the API key, then update the shared monitor
+  Expected: 401 without key, 200 with key, GATE-B CRITICAL, I1001 -> A03, dashboard 200
+  Actual:   401 without key, 200 with key, GATE-B CRITICAL, I1001 -> A03, dashboard 200
+  Result:   PASS
+
+TC-37  GET /api/areas returns JSON with level, trend and time-to-critical
+  Expected: true
+  Actual:   true
+  Result:   PASS
+
+PART E - DATABASE (BONUS)
+
+TC-38  Derby save then load restores venue, units, incidents, queues and history
+  Expected: 8 units, 7 incidents, 1 waiting, I1001 5 history
+  Actual:   8 units, 7 incidents, 1 waiting, I1001 5 history
+  Result:   PASS
+
+  Trace - save of a busy day:
+    alerts kept 1000, save took 712 ms, longest sensor wait during the save 31 ms
+TC-39  Saving a busy day does not stop the sensors (monitor locked only to copy the data)
+  Expected: alerts kept 1000, longest sensor wait under 300 ms
+  Actual:   alerts kept 1000, longest sensor wait under 300 ms
+  Result:   PASS
+
+TC-40  A venue cannot be saved into another venue's database
+  Expected: refused
+  Actual:   refused
+  Result:   PASS
+
+  Trace - second program's output:
+    ERROR: The database for Sample International Airport cannot be used: the database is already in use by another CrowdWatch program on this computer. Close it first, or use a different folder.
+TC-41  A second program cannot open a database in use: it stops instead of showing sample data
+  Expected: exit 1, already in use
+  Actual:   exit 1, already in use
+  Result:   PASS
+
+PART F - REAL-WORLD ROBUSTNESS
+
+  Trace - GATE-A readings after the turnstile run (about one stored per 10 s):
+    [09:00=900, 09:00:09=1169, 09:00:19=1218, 09:00:29=1267, 09:00:30=1270]
+TC-42  Turnstile sending one count per person (5/s): TREND warning comes before CRITICAL
+  Expected: TREND while not CRITICAL
+  Actual:   TREND while not CRITICAL
+  Result:   PASS
+
+  Trace - level when the TREND alert was raised:
+    MODERATE 79%
+TC-43  A unit is at the incident area after arriving, so the next dispatch uses its real position
+  Expected: A03 DUTYFREE-1 -> GATE-A, next walk 0 min
+  Actual:   A03 DUTYFREE-1 -> GATE-A, next walk 0 min
+  Result:   PASS
+
+TC-44  Only the newest 1000 alerts are kept, newest first
+  Expected: 1000, newest CLEARED
+  Actual:   1000, newest CLEARED
+  Result:   PASS
+
+TC-45  A slow listener (2 s per alert, like an SMS gateway) does not hold up the monitor
+  Expected: 3 updates in under 100 ms
+  Actual:   3 updates in under 100 ms
+  Result:   PASS
+
+TC-46  Text longer than the database columns is refused with a clear message (so saving cannot break)
+  Expected: false false
+  Actual:   false false
+  Result:   PASS
+
+  Trace - refusal message:
+    Details: too long (401 characters; at most 400).
+TC-47  The API refuses request bodies over 64 KB
+  Expected: 413
+  Actual:   413
+  Result:   PASS
+
+PART G - AUTOMATION, SCOUT DEVICES, SOS AND EVACUATION
+
+  Trace - alerts after loading the airport with automation on:
+    01/12 09:00  REPOSITION  Reinforcement for SEC-1 (HIGH, 88%): A01 sent - 2 of 2 units there
+TC-48  Automation: SEC-1 at HIGH reports crowd control automatically and sends the nearest crowd-control unit
+  Expected: I1001 CROWD at SEC-1 -> A02, automatic, TASK on A02's device
+  Actual:   I1001 CROWD at SEC-1 -> A02, automatic, TASK on A02's device
+  Result:   PASS
+
+TC-49  Automation: more HIGH readings make no duplicates; reaching CRITICAL raises the same incident to CRITICAL
+  Expected: 1 automatic incident, I1001 CRITICAL
+  Actual:   1 automatic incident, I1001 CRITICAL
+  Result:   PASS
+
+TC-50  Automation: the incident stays open until an officer reviews it; a false alarm closes it and frees the unit
+  Expected: open after the area calmed, RESOLVED, A02 AVAILABLE, reviewed by Officer Khalid
+  Actual:   open after the area calmed, RESOLVED, A02 AVAILABLE, reviewed by Officer Khalid
+  Result:   PASS
+
+  Trace - I1001 history:
+    01/12 09:00 Crowd build-up / queue control reported at SEC-1 (HIGH)
+    01/12 09:00 Assigned to A02
+    01/12 09:00 Task sent to A02's device
+    01/12 09:00 Escalated HIGH -> CRITICAL: SEC-1 reached CRITICAL
+    01/12 09:00 SEC-1 back to LOW; officer to confirm and close
+    01/12 09:00 Reviewed by Officer Khalid - false alarm: queue was a tour group
+    01/12 09:00 Resolved after 0 min: False alarm (Officer Khalid): queue was a tour group
+TC-51  Automation on a TREND warning: crowd control is sent before GATE-A becomes HIGH
+  Expected: sent while MODERATE, unit A05
+  Actual:   sent while MODERATE, unit A05
+  Result:   PASS
+
+TC-52  Supervision: alarm when no officer has checked in, none within 15 min of a check-in, alarm again when overdue (once)
+  Expected: SUPERVISION | - | SUPERVISION | -
+  Actual:   SUPERVISION | - | SUPERVISION | -
+  Result:   PASS
+
+  Trace - supervision alert:
+    01/12 09:16  SUPERVISION  The security officer on watch (Officer Sara) has not checked in for 16 min. An officer must check in now.
+TC-53  Unit that does not acknowledge: reminder at 2 min, task reassigned at 4 min and the unit marked UNREACHABLE until it answers
+  Expected: REMINDER I1001 | REASSIGNED I1001 -> A08 | A03 UNREACHABLE -> AVAILABLE
+  Actual:   REMINDER I1001 | REASSIGNED I1001 -> A08 | A03 UNREACHABLE -> AVAILABLE
+  Result:   PASS
+
+  Trace - A03 device inbox:
+    [01/12 09:00  TASK  TASK I1001 CRITICAL: Medical emergency at GATE-A (Gates A1-A8). Route: [DUTYFREE-1 -> GATE-A] (4 min). Details: Collapsed passenger. Acknowledge on your device or by radio., 01/12 09:02  REMINDER  REMINDER - not acknowledged: TASK I1001 CRITICAL: Medical emergency at GATE-A (Gates A1-A8). Route: [DUTYFREE-1 -> GATE-A] (4 min). Details: Collapsed passenger. Acknowledge on your device or by radio., 01/12 09:04  CANCELLED  STAND DOWN from I1001: No answer. Wait for your next task.]
+TC-54  A task acknowledged on the device gets no reminders
+  Expected: no action, I1001 acknowledged
+  Actual:   no action, I1001 acknowledged
+  Result:   PASS
+
+TC-55  SOS from the control room: CRITICAL, nearest unit sent, units within 5 min alerted as backup
+  Expected: CRITICAL SOS -> A03, nearby alerted: A02 A05
+  Actual:   CRITICAL SOS -> A03, nearby alerted: A02 A05
+  Result:   PASS
+
+  Trace - SOS result:
+    I1001 SOS at DUTYFREE-1: assigned to A03. 2 nearby unit(s) alerted.
+TC-56  SOS from a scout's device uses the scout's position and never sends the scout who asked for help
+  Expected: at GATE-A, not A05
+  Actual:   at GATE-A, not A05
+  Result:   PASS
+
+TC-57  SOS when every unit is busy: the nearest unit doing a LOW task is pulled away; that task waits again
+  Expected: SOS -> A05 (taken from a lower-priority task), LOW queue 1
+  Actual:   SOS -> A05 (taken from a lower-priority task), LOW queue 1
+  Result:   PASS
+
+  Trace - evacuation plan:
+    ARRIVALS-1 -> CURB-1 via [ARRIVALS-1 -> CURB-1] (2 min, 600 people out in about 6 min)
+    BAGGAGE-1 -> CURB-1 via [BAGGAGE-1 -> ARRIVALS-1 -> CURB-1] (4 min, 0 people out in about 8 min)
+    CHECKIN-1 -> CURB-1 via [CHECKIN-1 -> CURB-1] (2 min, 980 people out in about 6 min)
+    CHECKIN-2 -> CURB-2 via [CHECKIN-2 -> CURB-2] (2 min, 450 people out in about 3 min)
+    CURB-1 is an exit: keep it clear
+    CURB-2 is an exit: keep it clear
+    DUTYFREE-1 (zone) -> CURB-1 via [DUTYFREE-1 -> PASS-1 -> BAGGAGE-1 -> ARRIVALS-1 -> CURB-1] (10 min, 0 people out in about 16 min)
+    GATE-A (zone) -> CURB-1 via [GATE-A -> DUTYFREE-1 -> PASS-1 -> BAGGAGE-1 -> ARRIVALS-1 -> CURB-1] (14 min, 900 people out in about 20 min)
+    GATE-B (zone) -> CURB-2 via [GATE-B -> GATE-C -> SEC-2 -> CHECKIN-2 -> CURB-2] (17 min, 0 people out in about 18 min)
+    GATE-C -> CURB-2 via [GATE-C -> SEC-2 -> CHECKIN-2 -> CURB-2] (9 min, 0 people out in about 10 min)
+    PASS-1 (zone) -> CURB-1 via [PASS-1 -> BAGGAGE-1 -> ARRIVALS-1 -> CURB-1] (8 min, 210 people out in about 14 min)
+    SEC-1 -> CURB-1 via [SEC-1 -> CHECKIN-1 -> CURB-1] (5 min, 395 people out in about 9 min)
+    SEC-2 -> CURB-2 via [SEC-2 -> CHECKIN-2 -> CURB-2] (5 min, 0 people out in about 6 min)
+    TRAIN is an exit: keep it clear
+TC-58  Evacuation of a sector: plan to the nearest exit outside the zone, avoiding the crowded checkpoint; public routes avoid the zone
+  Expected: GATE-A -> CURB-1 14 min, 900 people out in about 20 min via BAGGAGE-1, detour avoids PASS-1 and DUTYFREE-1, A03 told to guide to CURB-1
+  Actual:   GATE-A -> CURB-1 14 min, 900 people out in about 20 min via BAGGAGE-1, detour avoids PASS-1 and DUTYFREE-1, A03 told to guide to CURB-1
+  Result:   PASS
+
+  Trace - result:
+    Evacuation of Airside T1 started: 4 area(s), plan sent to 8 unit(s).
+TC-59  Ending the evacuation reopens the zone and tells every unit
+  Expected: no zone, route via PASS-1, 8 units told
+  Actual:   no zone, route via PASS-1, 8 units told
+  Result:   PASS
+
+TC-60  Message to all units reaches every unit on duty
+  Expected: 8 units
+  Actual:   8 units
+  Result:   PASS
+
+  Trace - JSON received by the radio gateway:
+    {"unit":"A03","name":"Medical Responder 1","kind":"TASK","incident":1001,"time":"2026-12-01T09:00","text":"TASK I1001 CRITICAL: Medical emergency at GATE-A (Gates A1-A8). Route: [DUTYFREE-1 -> GATE-A] (4 min). Details: Fainted. Acknowledge on your device or by radio."}
+TC-61  Radio gateway: the task reaches the gateway as JSON; if the gateway is down the control room is warned
+  Expected: A03 TASK received, DELIVERY alert
+  Actual:   A03 TASK received, DELIVERY alert
+  Result:   PASS
+
+TC-62  A radio channel connected after a task was created still receives that unacknowledged task
+  Expected: [A02 TASK]
+  Actual:   [A02 TASK]
+  Result:   PASS
+
+  Trace - GET /api/unit?id=A03 after acknowledging:
+    {"ok":true,"id":"A03","name":"Medical Responder 1","status":"BUSY","area":"DUTYFREE-1","task":{"id":1001,"category":"MEDICAL","label":"Medical emergency","priority":"CRITICAL","status":"ASSIGNED","area":"GATE-A","areaName":"Gates A1-A8","details":"Fainted","acknowledged":true,"route":"[DUTYFREE-1 ->...
+TC-63  Scout device: sees its task, acknowledges it, can send SOS; the device page loads
+  Expected: task I1001, ack 200, acknowledged, SOS 200, page 200
+  Actual:   task I1001, ack 200, acknowledged, SOS 200, page 200
+  Result:   PASS
+
+TC-64  Database keeps automation state: automatic incident and its review, officer check-in, evacuation and its plan
+  Expected: I1001 automatic, reviewed by Officer Sara, officer Officer Sara, evacuating GATE-C, plan 14 areas
+  Actual:   I1001 automatic, reviewed by Officer Sara, officer Officer Sara, evacuating GATE-C, plan 14 areas
+  Result:   PASS
+
+TC-65  A database saved by the previous version is upgraded automatically and still loads
+  Expected: loaded, 1 unit, I1001 waiting, saved again
+  Actual:   loaded, 1 unit, I1001 waiting, saved again
+  Result:   PASS
+
+PART H - HARDENING FROM THE STRESS TEST
+
+TC-66  TREND cool-down: a rise that stops and starts again within 10 minutes raises one TREND alert; after 10 minutes it may warn again
+  Expected: 1 alert by minute 5, 2 by minute 13
+  Actual:   1 alert by minute 5, 2 by minute 13
+  Result:   PASS
+
+TC-67  Hysteresis: HIGH starts at 80%, but only ends below 78%; 10 swings between 79% and 81% give one alert, not 20
+  Expected: 81% HIGH, 79% HIGH, 78% MODERATE, swings: 1 alert
+  Actual:   81% HIGH, 79% HIGH, 78% MODERATE, swings: 1 alert
+  Result:   PASS
+
+TC-68  Archive: a resolved incident stays 24 hours, then leaves memory (the summary still counts it)
+  Expected: kept at 23 h | ARCHIVED 1 at 25 h, I1001 not in memory, summary: 1 archived
+  Actual:   kept at 23 h | ARCHIVED 1 at 25 h, I1001 not in memory, summary: 1 archived
+  Result:   PASS
+
+TC-69  Archive in the database: written once to incident_archive, not loaded back into memory, count kept
+  Expected: 1 archive row, I1001 not loaded, 1 archived
+  Actual:   1 archive row, I1001 not loaded, 1 archived
+  Result:   PASS
+
+TC-70  Keys: reading needs a key; the scout key opens only what a scout device needs
+  Expected: no key 401, control 200, scout unit 200, scout areas 403, scout evacuate 403, pages 200
+  Actual:   no key 401, control 200, scout unit 200, scout areas 403, scout evacuate 403, pages 200
+  Result:   PASS
+
+TC-71  Rate limit (10/s with bursts of 40 in this test): a device sending too fast gets 429; the control key is not limited
+  Expected: scout: some 429, control: 0
+  Actual:   scout: some 429, control: 0
+  Result:   PASS
+
+TC-72  Read cache: dashboard data is reused for half a second; a change through the API refreshes it at once
+  Expected: second read cached, read after an API change fresh
+  Actual:   second read cached, read after an API change fresh
+  Result:   PASS
+
+TC-73  Slow clients: 40 connections sending half a request do not block others; small replies are not delayed by 40 ms
+  Expected: 200 under 2 s, small replies under 20 ms
+  Actual:   200 under 2 s, small replies under 20 ms
+  Result:   PASS
+
+TC-74  Radio console relay prints only for units without an online device, and never 'task closed' notes
+  Expected: 1x RADIO >> A08 printed once, 2 skipped
+  Actual:   1x RADIO >> A08 printed once, 2 skipped
+  Result:   PASS
+
+--- I. Web console (the browser control room at /) ---
+TC-75  The web console page and its files are served without a key; the old dashboard moved to /classic
+  Expected: / 200 html with login, js 200, css 200, /classic 200
+  Actual:   / 200 html with login, js 200, css 200, /classic 200
+  Result:   PASS
+
+  Trace - GET /api/overview:
+    {"venue":"Sample International Airport","code":"airport","now":"09:00","people":4235,"capacity":15220,"areas":16,"levels":{"LOW":14,"MODERATE":1,"HIGH":1,"CRITICAL":0},"incidents":{"open":1,"CRITICAL":0,"HIGH":0,"NORMAL":1,"LOW":0,"waiting":0,"unacknowledged":1},"units":{"total":8,"AVAILABLE":7,"BUSY":1,"OFF_DUTY":0,"UNREACHABLE":0,"online":0},"review":0,"automation":false,"autoRule":"CROWD at HIGH or TREND","officer":"Officer Test","officerStatus":"Officer Test, checked in 0 min ago","overdue":false,"evacuation":null,"archived":0,"proposal":null,"signs":0,"stale":0,"lost":0,"events":[],"countCheck":null}
+TC-76  GET /api/overview, /api/units and /api/venue give the console everything in three replies; the data still needs the key
+  Expected: no key 401; overview people, levels, incidents, units, officer; units with task and device; venue thresholds, categories, sectors
+  Actual:   no key 401; overview people, levels, incidents, units, officer; units with task and device; venue thresholds, categories, sectors
+  Result:   PASS
+
+TC-77  Incident details for the side panel, and reassign / escalate from the browser
+  Expected: details with route and history; reassign 200 to A04; escalate 200 to HIGH; unknown id ok:false
+  Actual:   details with route and history; reassign 200 to A04; escalate 200 to HIGH; unknown id ok:false
+  Result:   PASS
+
+TC-78  Evacuation preview shows the plan without starting anything; during an evacuation it shows the live plan
+  Expected: preview rows with exits, nothing marked, no evacuation; live plan for Airside T1; ended
+  Actual:   preview rows with exits, nothing marked, no evacuation; live plan for Airside T1; ended
+  Result:   PASS
+
+TC-79  GET /api/readings gives an area's recent counts so the console chart starts with history
+  Expected: ok, capacity 450, latest reading 300
+  Actual:   ok, capacity 450, latest reading 300
+  Result:   PASS
+
+--- J. Further automation (sensor health, follow-up, flow, events, proposals, lost persons, shifts, signs) ---
+TC-80  Sensor health: an area whose sensor is silent for 5 min is marked stale and a unit is asked to count; new data clears it
+  Expected: fresh at 4 min, STALE at 6 min, 1 unit asked, cleared
+  Actual:   fresh at 4 min, STALE at 6 min, 1 unit asked, cleared
+  Result:   PASS
+
+TC-81  Sensor health: a count jumping 700 people in 5 s is suspect and checked by a unit; a staff count settles it
+  Expected: suspect (count jumped from 300 to 1000 in 5 s), 1 unit asked, settled
+  Actual:   suspect (count jumped from 300 to 1000 in 5 s), 1 unit asked, settled
+  Result:   PASS
+
+TC-82  Follow-through: a unit that acknowledged but is not on scene is reminded at 10 min; at 20 min a backup unit is sent
+  Expected: reminder, backup sent (1 unit, not A03)
+  Actual:   reminder, backup sent (1 unit, not A03)
+  Result:   PASS
+
+TC-83  Follow-through: the automatic crowd incident at SEC-1 closes itself once SEC-1 has been below HIGH for 10 min
+  Expected: open at 5 min, closed at 10 min
+  Actual:   open at 5 min, closed at 10 min
+  Result:   PASS
+
+TC-84  Follow-through: an incident that waits 10 min for a wheelchair unit gets the nearest free unit as a stand-in
+  Expected: WAITING, then ASSIGNED to a stand-in
+  Actual:   WAITING, then ASSIGNED to a stand-in
+  Result:   PASS
+
+TC-85  Crowd flow: GATE-A at HIGH makes the units next to it hold people back; a public sign is drafted and sent only when approved; normal again later
+  Expected: held by 1 unit(s), 1 draft, approved and sent to PA, flow normal
+  Actual:   held by 1 unit(s), 1 draft, approved and sent to PA, flow normal
+  Result:   PASS
+
+  Trace - alert at HIGH:
+    GATE-A (HIGH) has 1 of 2 units; no other suitable unit within 10 min walk - send one from further away if needed, or call units back on duty
+  Trace - reinforcements at GATE-A:
+    A04 from ARRIVALS-1; A06 from CHECKIN-2; A07 from SEC-2; 
+TC-86  Reinforcement: GATE-A crowded brings units in (2 at HIGH within 10 min walk, 4 at CRITICAL from anywhere, crowd-control and security first); they return to their posts 10 min after it calms
+  Expected: LOW 1 unit, HIGH 1 (none within 10 min, A07 at 15 min not sent), CRITICAL 4, no medic taken, kept at 5 min, all released at 10 min, 0 left
+  Actual:   LOW 1 unit, HIGH 1 (none within 10 min, A07 at 15 min not sent), CRITICAL 4, no medic taken, kept at 5 min, all released at 10 min, 0 left
+  Result:   PASS
+
+TC-87  Crowd flow: GATE-B expected CRITICAL in 15 min (no TREND alert yet) gets a free unit sent ahead
+  Expected: 15 min, staged A05 at GATE-B
+  Actual:   15 min, staged A05 at GATE-B
+  Result:   PASS
+
+TC-88  Crowd flow: the Landside sector (rail station) has no free unit, so one is moved there from a sector with two or more
+  Expected: COVER Landside, A04 (MOVE)
+  Actual:   COVER Landside, A04 (MOVE)
+  Result:   PASS
+
+TC-89  Scheduled event: 30 min before the 18:00 departure bank, Airside T1 levels start 10 points earlier (GATE-A 56% becomes MODERATE); normal after it
+  Expected: LOW -> MODERATE (1 active) -> LOW, event started and ended
+  Actual:   LOW -> MODERATE (1 active) -> LOW, event started and ended
+  Result:   PASS
+
+TC-90  Evacuation proposal: GATE-C CRITICAL and still rising for 10 min is PROPOSED; nothing starts until the officer decides
+  Expected: none, then proposed for GATE-C, not started, started by the officer
+  Actual:   none, then proposed for GATE-C, not started, started by the officer
+  Result:   PASS
+
+TC-91  Fire alarm input: a CRITICAL check is sent at once and evacuation of the fire zone is proposed; the officer can dismiss it
+  Expected: SOS assigned, proposed Terminal 2 (its fire zone), dismissed
+  Actual:   SOS assigned, proposed Terminal 2 (its fire zone), dismissed
+  Result:   PASS
+
+  Trace - lookout as read out on the radio:
+    RADIO >> ALL UNITS: LOOKOUT I1002: Boy, 7 years, red cap, speaks Arabic - last seen at GATE-A 09:00. If found, press Found on your device or call the control room; bring the person to ARRIVALS-1.
+TC-92  Lost person: a lookout goes to every other unit (once on the radio), with the search area and the meeting point
+  Expected: lookout to 7 units, radio 1 line, search GATE-A, GATE-B, DUTYFREE-1, meeting ARRIVALS-1
+  Actual:   lookout to 7 units, radio 1 line, search GATE-A, GATE-B, DUTYFREE-1, meeting ARRIVALS-1
+  Result:   PASS
+
+TC-93  Lost person: the search widens every 5 min; at 15 min every exit is asked to check; at 30 min authorities are suggested and a PA message drafted
+  Expected: widened, 15-min alert, 30-min alert, PA draft awaiting approval
+  Actual:   widened, 15-min alert, 30-min alert, PA draft awaiting approval
+  Result:   PASS
+
+TC-94  Lost person found at PASS-1 by A03: lookout stopped, A03 brings him to ARRIVALS-1, PA draft withdrawn, details erased when reunited
+  Expected: found, stand down to 6 units, A03 to ARRIVALS-1, draft withdrawn, erased
+  Actual:   found, stand down to 6 units, A03 to ARRIVALS-1, draft withdrawn, erased
+  Result:   PASS
+
+TC-95  Found person reported by a scout at GATE-C: recorded as already found and compared with the open lost case
+  Expected: recorded as found at GATE-C, compared with the girl's case
+  Actual:   recorded as found at GATE-C, compared with the girl's case
+  Result:   PASS
+
+TC-96  Lost person: children and vulnerable adults are recognised from the description and handled as CRITICAL
+  Expected: true true true false false
+  Actual:   true true true false false
+  Result:   PASS
+
+TC-97  Shifts: A07 (06:00-08:30) is signed off; A02 finishes its task first; both come back on duty at 06:00 next day
+  Expected: A07 OFF_DUTY, A02 off after task, A02 OFF_DUTY, both on
+  Actual:   A07 OFF_DUTY, A02 off after task, A02 OFF_DUTY, both on
+  Result:   PASS
+
+  Trace - handover report (first lines):
+    CROWDWATCH HANDOVER REPORT - Sample International Airport - 2026-12-01 14:05
+    
+    Venue: Sample International Airport
+    People on site: 4235 of 15220 capacity (28%)
+    Areas at HIGH or CRITICAL: 1 of 16
+    Units: 8 (6 available, 2 busy, 0 off duty)
+    Incidents: 2 open, 0 resolved
+    Waiting queues: CRITICAL 0, HIGH 0, NORMAL 0, LOW 0
+    Automatic dispatch: ON (CROWD at HIGH or TREND)
+    Security officer: Officer Sara, checked in 0 min ago; automatic incidents awaiting review: 1
+    
+    AREAS AT HIGH OR CRITICAL
+TC-98  Handover: at the 14:00 shift change a report is written once (file and memory) with open incidents and lost persons
+  Expected: HANDOVER 14:00 once, 1 file, has incidents and lost persons
+  Actual:   HANDOVER 14:00 once, 1 file, has incidents and lost persons
+  Result:   PASS
+
+TC-99  Backup: the first save of the day copies the database to backups/<venue>/<date>
+  Expected: backup made, 1 day kept
+  Actual:   backup made, 1 day kept
+  Result:   PASS
+
+TC-100  GET /health (no key, no venue data): degraded with the reason while no officer is on watch, ok after a check-in
+  Expected: 200 degraded (officer check-in overdue), 200 ok
+  Actual:   200 degraded (officer check-in overdue), 200 ok
+  Result:   PASS
+
+TC-101  API: lost cases with search areas; a scout can press Found (scout key) but cannot raise an alarm; handover report as text
+  Expected: lost with search, found 200 at GATE-C, alarm 403, handover text
+  Actual:   lost with search, found 200 at GATE-C, alarm 403, handover text
+  Result:   PASS
+
+--- K. Venue layout: drawing, positions, exit flows, corridor capacity, lifts, fire zones ---
+TC-102  Layout: every built-in venue has a drawing and every area placed on it; the template venue finds its drawing and works out walking times
+  Expected: airport all areas placed, PNG; stadium all areas placed, PNG; umrah all areas placed, PNG; mall drawing found, ENT-N to ATRIUM 2 min from the drawing
+  Actual:   airport all areas placed, PNG; stadium all areas placed, PNG; umrah all areas placed, PNG; mall drawing found, ENT-N to ATRIUM 2 min from the drawing
+  Result:   PASS
+
+TC-103  Umrah layout: walking times come from the drawing (1 unit = 1 m, 60 m a minute in a crowd)
+  Expected: MATAF to KA-GATE 5 min, MASAA to MARWA-GATE 5 min, Makkah and Madinah not connected
+  Actual:   MATAF to KA-GATE 5 min, MASAA to MARWA-GATE 5 min, Makkah and Madinah not connected
+  Result:   PASS
+
+  Trace - hall plan:
+    [[Ljava.lang.String;@7671c02d -> [Ljava.lang.String;@44189797 -> [Ljava.lang.String;@4aa4bfa1 -> [Ljava.lang.String;@2100d881 -> [Ljava.lang.String;@59881424]
+TC-104  Evacuation with exit flows: 6,000 people split over both exits (all through the near door would take 7 min); the lift is never used (the upper floor walks 4 min down the stairs and queues behind 3,000 at the near door: clear in 8 min); fire zone by name
+  Expected: 3000 to NEAR, 3000 to FAR, zone clear in 8 min, upper floor via [UPPER -> HALL -> NEAR]
+  Actual:   3000 to NEAR, 3000 to FAR, zone clear in 8 min, upper floor via [UPPER -> HALL -> NEAR]
+  Result:   PASS
+
+TC-105  Umrah: evacuating the Mataf plans Makkah only, spreads the Mataf crowd over several exits; each city has its own meeting point for lost pilgrims
+  Expected: Madinah not planned, Mataf uses 2 exits, meeting SALAM in Madinah and KA-GATE in Makkah
+  Actual:   Madinah not planned, Mataf uses 2 exits, meeting SALAM in Madinah and KA-GATE in Makkah
+  Result:   PASS
+
+TC-106  API: the layout (scout key allowed, for the route map on the phone), the drawing (needs a key) and the plan with the time to clear the zone
+  Expected: layout 200 with 26 areas, map without key 401, map 200 image/png, plan clear in minutes
+  Actual:   layout 200 with 26 areas, map without key 401, map 200 image/png, plan clear in minutes
+  Result:   PASS
+
+--- L. People moving between zones, and the count check against the gates ---
+TC-107  Moving people: one door count changes both zones together, so nobody is counted twice; counters wired to the wrong areas are refused
+  Expected: CHECKIN-1 950, SEC-1 425, total unchanged; no link refused; entering not at an exit refused; too few in CURB-1 noted
+  Actual:   CHECKIN-1 950, SEC-1 425, total unchanged; no link refused; entering not at an exit refused; too few in CURB-1 noted
+  Result:   PASS
+
+  Trace - count check alert:
+    Counts do not add up: 4595 people in the areas, but the gates say 4295 are inside (300 too many: someone is counted twice, for example overlapping cameras or a counter that only adds). Recount, then reset the count check.
+TC-108  Count check: gates say how many are inside; when the areas add up to 300 more for 5 min the control room is told someone is counted twice; a reset after a recount clears it
+  Expected: not in use before gate counts, agrees (difference 0), quiet at first, alert after 5 min (300 too many), reset to difference 0
+  Actual:   not in use before gate counts, agrees (difference 0), quiet at first, alert after 5 min (300 too many), reset to difference 0
+  Result:   PASS
+
+=====================================
+TOTAL: 108 passed, 0 failed

@@ -1,0 +1,105 @@
+
+== BASELINE - one client, one request at a time ==
+endpoint                  count    req/s   p50 ms   p95 ms   p99 ms    max ms
+GET /                       200     63.7      2.5      6.6      8.4       9.4
+GET /api/areas              200     63.7      2.8      6.8     12.2     141.0
+GET /api/status             200     63.7      1.6      4.9      7.5       7.8
+GET /api/summary            200     63.7      1.8      4.7      6.2      24.1
+GET /api/unit               200     63.7      1.5      4.8      8.2       8.7
+POST /api/occupancy         200     63.7      1.8      5.3      8.1      15.1
+total 1200 requests, 382 req/s
+errors: none
+  t=15s  VmRSS: 383704 kB Threads: 542
+  t=30s  VmRSS: 381404 kB Threads: 541
+  t=45s  VmRSS: 387760 kB Threads: 541
+  t=60s  VmRSS: 400564 kB Threads: 541
+  t=75s  VmRSS: 404068 kB Threads: 541
+  t=90s  VmRSS: 413808 kB Threads: 541
+
+== REALISTIC BUSY VENUE - 250 scout devices, 20 dashboards, 400 sensors (1/s each), 2 reports/s, officer ==
+endpoint                  count    req/s   p50 ms   p95 ms   p99 ms    max ms
+GET /api/alerts             600      6.5      0.9      9.0     24.0      30.9
+GET /api/areas              600      6.5      1.7     10.1     56.5      71.9
+GET /api/incidents          600      6.5      1.0     12.5     36.4      45.1
+GET /api/status             609      6.5      0.6      5.4     18.4      39.3
+GET /api/summary            600      6.5      0.9      3.4     30.8      32.5
+GET /api/unit (scout)      7499     80.6      0.6      1.7      5.1      54.6
+POST /api/ack               227      2.4      0.5      1.1      2.4       3.9
+POST /api/checkin             9      0.1      0.8     74.3     74.3      74.3
+POST /api/incidents         180      1.9      1.8      3.4      8.3      36.2
+POST /api/occupancy       35810    385.0      0.5      3.7     12.2      88.5
+POST /api/onscene           218      2.3      0.6      1.2      3.4       3.6
+POST /api/resolve           207      2.2      0.6      1.0      3.4       8.7
+POST /api/review             39      0.4      0.5      1.0      1.0       1.0
+POST /api/sos                 3      0.0      1.8     20.5     20.5      20.5
+total 47201 requests, 508 req/s
+errors: none
+scouts: 227 acks, 207 resolved, 3 SOS; 180 incidents reported, 39 automatic dispatches reviewed
+server during phase: CPU 19% of one core (avg), VmRSS: 413808 kB Threads: 541
+summary after phase:
+Venue: Stress Test Mega Venue
+People on site: 41631 of 1166631 capacity (4%)
+Areas at HIGH or CRITICAL: 0 of 400
+Units: 250 (227 available, 23 busy, 0 off duty)
+Incidents: 23 open, 207 resolved, average 0 min to resolve
+Waiting queues: CRITICAL 0, HIGH 0, NORMAL 0, LOW 0
+Automatic dispatch: ON (CROWD at HIGH or TREND)
+Security officer: Officer Load, checked in 0 min ago; automatic incidents awaiting review: 3
+
+== RAMP - 16 clients sending requests back to back ==
+endpoint                  count    req/s   p50 ms   p95 ms   p99 ms    max ms
+GET /api/areas            21260   1417.0      1.9      8.0     11.5      24.0
+GET /api/summary          20854   1389.9      1.4      7.2     10.6      23.9
+GET /api/unit             21306   1420.1      2.2      8.3     11.2      24.3
+POST /api/occupancy       20807   1386.8      2.2      8.2     11.4      25.3
+total 84227 requests, 5614 req/s
+errors: none
+server during step: CPU 148% of one core (avg), VmRSS: 434456 kB Threads: 541
+
+== RAMP - 64 clients sending requests back to back ==
+endpoint                  count    req/s   p50 ms   p95 ms   p99 ms    max ms
+GET /api/areas            21963   1463.2      9.8     20.6     25.5      48.6
+GET /api/summary          21969   1463.6      9.6     20.0     24.6      36.4
+GET /api/unit             21763   1449.8     12.3     21.2     25.9      41.1
+POST /api/occupancy       22009   1466.2     12.4     21.4     25.8      44.2
+total 87704 requests, 5843 req/s
+errors: none
+server during step: CPU 174% of one core (avg), VmRSS: 448120 kB Threads: 541
+
+== RAMP - 256 clients sending requests back to back ==
+endpoint                  count    req/s   p50 ms   p95 ms   p99 ms    max ms
+GET /api/areas            22310   1482.6     46.2     65.5     73.1     101.9
+GET /api/summary          22287   1481.1     46.4     64.7     72.2     100.5
+GET /api/unit             22174   1473.6     52.3     66.8     73.6      99.9
+POST /api/occupancy       22312   1482.8     52.3     66.9     74.2     100.8
+total 89083 requests, 5920 req/s
+errors: none
+server during step: CPU 164% of one core (avg), VmRSS: 482576 kB Threads: 541
+
+== RAMP - 1024 clients sending requests back to back ==
+endpoint                  count    req/s   p50 ms   p95 ms   p99 ms    max ms
+GET /api/areas            20565   1350.5    189.6    244.9    264.7     288.9
+GET /api/summary          20230   1328.5    193.2    245.0    264.7     286.6
+GET /api/unit             20327   1334.9    214.3    252.8    268.9     286.3
+POST /api/occupancy       20521   1347.6    214.2    252.4    268.3     285.9
+total 81643 requests, 5361 req/s
+errors: none
+server during step: CPU 163% of one core (avg), VmRSS: 638628 kB Threads: 541
+
+== SLOW CLIENTS: 4 connections sending half a request and waiting ==
+normal request: answered in 1 ms
+
+== SLOW CLIENTS: 50 connections sending half a request and waiting ==
+normal request: answered in 1 ms
+
+== SLOW CLIENTS: 128 connections sending half a request and waiting ==
+normal request: answered in 1 ms
+
+== SLOW CLIENTS: 300 connections sending half a request and waiting ==
+normal request: answered in 1 ms
+
+== SLOW CLIENTS: 600 connections sending half a request and waiting ==
+normal request: answered in 4319 ms
+
+== IDLE CONNECTION FLOOD ==
+opened 5000 idle connections; normal request: answered in 1 ms; server VmRSS: 642976 kB Threads: 541
