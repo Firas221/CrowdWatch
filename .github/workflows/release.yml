@@ -1,10 +1,17 @@
-# Pushing a tag such as v2.0 builds CrowdWatch, runs the tests and publishes a GitHub release
-# with the ready-to-run package (program, source, docs, examples) attached as a zip.
+# Pushing a tag such as v2.0 (or running this workflow by hand with a version) builds CrowdWatch,
+# runs the tests and publishes a GitHub release with the ready-to-run package (program, source,
+# docs, examples) attached as a zip. Run by hand, the tag is created on the commit that was built.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to publish, e.g. v2.0'
+        required: true
+        default: 'v2.0'
 
 permissions:
   contents: write
@@ -12,6 +19,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -22,7 +31,7 @@ jobs:
         run: ./build.sh
       - name: Package
         run: |
-          NAME="CrowdWatch-${GITHUB_REF_NAME}"
+          NAME="CrowdWatch-${TAG}"
           mkdir -p "dist/$NAME"
           cp -R program source docs examples README.md README.txt LICENSE "dist/$NAME/"
           [ -d screenshots ] && cp -R screenshots "dist/$NAME/" || true
@@ -33,6 +42,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$ZIP" --title "CrowdWatch $GITHUB_REF_NAME" \
+          gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "CrowdWatch $TAG" \
             --notes "Ready-to-run package: unzip, then run program/run.bat (Windows) or program/run.sh. Needs Java 17 or newer. See README.md and docs/ for the guide." \
-            || gh release upload "$GITHUB_REF_NAME" "$ZIP" --clobber
+            || gh release upload "$TAG" "$ZIP" --clobber
