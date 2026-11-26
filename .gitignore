@@ -3,3 +3,10 @@ crowdwatch-data/
 build/
 classes/
 *.log
+# web console: dependencies and the build that goes into the Spring Boot jar
+web/node_modules/
+server/src/main/resources/static/
+server/target/
+program/CrowdWatch-server.jar
+web/*.tsbuildinfo
+docs/source/node_modules/

@@ -1,6 +1,5 @@
 package crowdwatch.net;
 
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -55,6 +54,8 @@ public class ApiServer {
     // true when this server runs a drill (training, nothing saved)
     private volatile boolean drill;
     private final ApiExtras extras;
+    // what the consoles read (shared with the Spring Boot server's controllers)
+    private final ConsoleData data;
     // the caller when the control key is used (or the server is open): full rights
     private static final Accounts.Who SYSTEM = accountsWho("control key", Accounts.Role.ADMIN, null);
     // what each role may change (each role also has the rights of the roles below it); every signed-in user may read
@@ -128,6 +129,7 @@ public class ApiServer {
         this.scoutKey = scoutKey == null || scoutKey.isBlank() ? null : scoutKey;
         this.limiter = new RateLimiter(perSecond);
         this.extras = new ApiExtras(monitor, this);
+        this.data = new ConsoleData(monitor, () -> drill, () -> dataFolder);
     }
 
     /** Gives the server the venue's database, for reports, replay and data-protection requests. */
@@ -181,7 +183,15 @@ public class ApiServer {
         }
         secure = tls != null;
         server.setExecutor(Executors.newFixedThreadPool(THREADS, r -> { Thread t = new Thread(r, "api"); t.setDaemon(true); return t; }));
-        server.createContext("/", this::handle);
+        server.createContext("/", hx -> {
+            Exchange ex = new Exchange(hx.getRequestMethod(), hx.getRequestURI().getPath(), hx.getRequestURI().getRawQuery(), hx.getRequestHeaders()::get,
+                hx.getRequestBody(), hx.getRemoteAddress().getAddress().getHostAddress(), hx instanceof com.sun.net.httpserver.HttpsExchange);
+            dispatch(ex);
+            for (String[] h : ex.replyHeaders) hx.getResponseHeaders().add(h[0], h[1]);
+            hx.sendResponseHeaders(ex.code, ex.replyBody.length == 0 ? -1 : ex.replyBody.length);
+            if (ex.replyBody.length > 0) try (OutputStream o = hx.getResponseBody()) { o.write(ex.replyBody); }
+            hx.close();
+        });
         server.start();
         return server.getAddress().getPort();
     }
@@ -204,16 +214,21 @@ public class ApiServer {
      * 200 if the operation succeeded, 422 if a rule refused it. Bad input gives 400 and an
      * unknown path 404, and a body over {@link #MAX_BODY} 413.
      */
-    private void handle(HttpExchange ex) throws IOException {
+    public void dispatch(Exchange ex) {
+        try { handle(ex); }
+        catch (IOException e) { send(ex, 400, "application/json", err("cannot read the request: " + e.getMessage())); }
+    }
+
+    private void handle(Exchange ex) throws IOException {
         int code;
         String type = "application/json", body;
         try {
-            String path = ex.getRequestURI().getPath();
-            String method = ex.getRequestMethod();
-            AVLTree<String, String> q = params(ex.getRequestURI().getRawQuery());
+            String path = ex.path;
+            String method = ex.method;
+            AVLTree<String, String> q = params(ex.rawQuery);
             if (method.equals("POST")) {
                 int limit = path.equals("/api/message") ? ApiExtras.MAX_MESSAGE_BODY : MAX_BODY;
-                byte[] raw = ex.getRequestBody().readNBytes(limit + 1);
+                byte[] raw = ex.body.readNBytes(limit + 1);
                 if (raw.length > limit) { send(ex, 413, type, err("request body larger than " + limit + " bytes")); return; }
                 AVLTree<String, String> form = params(new String(raw, StandardCharsets.UTF_8));
                 // merge the form body into the query parameters
@@ -224,7 +239,7 @@ public class ApiServer {
             Accounts acc = accounts;
             boolean open = apiKey == null && (acc == null || !acc.hasUsers());
             boolean control = open || (apiKey != null && apiKey.equals(given));
-            if (!control && limiter.tooMany(ex.getRemoteAddress().getAddress().getHostAddress())) { send(ex, 429, type, err("too many requests, slow down")); return; }
+            if (!control && !ex.limitChecked && limiter.tooMany(ex.remote)) { send(ex, 429, type, err("too many requests, slow down")); return; }
             Accounts.Who who = control ? SYSTEM : identify(acc, ex, given);
             extras.requests.incrementAndGet();
             if (endpoint.equals("GET /metrics")) {
@@ -247,12 +262,12 @@ public class ApiServer {
             if (endpoint.equals("POST /classic/login") || endpoint.equals("POST /classic/logout")) { classicSign(ex, acc, endpoint, q); return; }
             if (endpoint.equals("GET /classic") && who == null && acc != null && acc.hasUsers()) { send(ex, 200, "text/html; charset=utf-8", Dashboard.loginPage(q.search("msg"))); return; }
             if (ApiExtras.handles(endpoint)) {
-                ApiExtras.Reply rp = extras.handle(endpoint, q, who, header(ex, "Host"), ex instanceof com.sun.net.httpserver.HttpsExchange, ex.getRemoteAddress().getAddress().getHostAddress());
+                ApiExtras.Reply rp = extras.handle(endpoint, q, who, header(ex, "Host"), ex.secure, ex.remote);
                 if (method.equals("POST") && !endpoint.equals("POST /api/public/report") && !endpoint.equals("POST /api/password/reset"))
                     audit(who, endpoint, q, rp.code < 300, new String(rp.body, StandardCharsets.UTF_8).replaceAll(".*\"message\":\"([^\"]*)\".*", "$1"));
-                if (endpoint.equals("POST /api/public/report")) audit(new Accounts.Who("visitor " + ex.getRemoteAddress().getAddress().getHostAddress(), null, null), endpoint, q, rp.code < 300, "visitor report");
-                if (rp.file != null) ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + rp.file + "\"");
-                if (endpoint.equals("GET /api/photo")) ex.getResponseHeaders().set("Cache-Control", "private, max-age=600");
+                if (endpoint.equals("POST /api/public/report")) audit(new Accounts.Who("visitor " + ex.remote, null, null), endpoint, q, rp.code < 300, "visitor report");
+                if (rp.file != null) ex.set("Content-Disposition", "attachment; filename=\"" + rp.file + "\"");
+                if (endpoint.equals("GET /api/photo")) ex.set("Cache-Control", "private, max-age=600");
                 sendBytes(ex, rp.code, rp.type, rp.body);
                 return;
             }
@@ -267,14 +282,11 @@ public class ApiServer {
                 String imgType;
                 synchronized (m) { img = m.venue() == null ? null : m.venue().mapBytes(); imgType = m.venue() == null ? "" : m.venue().mapType(); }
                 if (img == null) { send(ex, 404, type, err("this venue has no map drawing")); return; }
-                ex.getResponseHeaders().set("Content-Type", imgType);
-                ex.getResponseHeaders().set("Cache-Control", "private, max-age=300");
-                ex.sendResponseHeaders(200, img.length);
-                try (OutputStream o = ex.getResponseBody()) { o.write(img); }
-                ex.close();
+                ex.set("Cache-Control", "private, max-age=300");
+                sendBytes(ex, 200, imgType, img);
                 return;
             }
-            String cacheKey = endpoint + "?" + ex.getRequestURI().getRawQuery();
+            String cacheKey = endpoint + "?" + ex.rawQuery;
             if (in(endpoint, CACHED)) {
                 String[] hit = cache.get(cacheKey);
                 if (hit != null) { send(ex, 200, hit[0], hit[1]); return; }
@@ -291,58 +303,37 @@ public class ApiServer {
                     case "GET /console.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("console.js"); }
                     case "GET /i18n.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("i18n.js"); }
                     case "GET /classic" -> { code = 200; type = "text/html; charset=utf-8"; body = Dashboard.page(m, apiKey != null && (who == null || who == SYSTEM), who != null && who != SYSTEM); }
-                    case "GET /api/overview" -> { code = 200; body = overview(); }
-                    case "GET /api/units" -> { code = 200; body = units(); }
-                    case "GET /api/incident" -> { code = 200; body = incident(num(q.search("id"))); }
-                    case "GET /api/venue" -> { code = 200; body = venue(); }
-                    case "GET /api/readings" -> { code = 200; body = readings(q.search("area")); }
-                    case "GET /api/evacuation" -> { code = 200; body = evacuation(q.search("zone")); }
-                    case "POST /api/reassign" -> { code = 0; body = null; r = m.reassign(num(q.search("id")), q.search("unit"), q.search("reason")); }
-                    case "POST /api/escalate" -> { code = 0; body = null; r = m.escalate(num(q.search("id"))); }
+                    case "GET /api/overview" -> { code = 200; body = data.overview(); }
+                    case "GET /api/units" -> { code = 200; body = data.units(); }
+                    case "GET /api/incident" -> { code = 200; body = data.incident(num(q.search("id"))); }
+                    case "GET /api/venue" -> { code = 200; body = data.venue(); }
+                    case "GET /api/readings" -> { code = 200; body = data.readings(q.search("area")); }
+                    case "GET /api/evacuation" -> { code = 200; body = data.evacuation(q.search("zone")); }
                     case "GET /health" -> { body = health(); code = body.contains("\"status\":\"fail\"") ? 503 : 200; }
-                    case "GET /api/lost" -> { code = 200; body = lost(); }
-                    case "GET /api/layout" -> { code = 200; body = layout(); }
-                    case "GET /api/announcements" -> { code = 200; body = announcements(); }
+                    case "GET /api/lost" -> { code = 200; body = data.lost(); }
+                    case "GET /api/layout" -> { code = 200; body = data.layout(); }
+                    case "GET /api/announcements" -> { code = 200; body = data.announcements(); }
                     case "GET /api/handover" -> { code = 200; type = "text/plain; charset=utf-8"; body = m.handoverReport(); }
-                    case "POST /api/found" -> { code = 0; body = null; r = m.found(num(q.search("id")), q.search("area"), by(q)); }
-                    case "POST /api/foundperson" -> { code = 0; body = null; r = m.foundPerson(q.search("area"), q.search("details"), q.search("contact"), by(q)); }
-                    case "POST /api/move" -> { code = 0; body = null; r = m.movePeople(q.search("from"), q.search("to"), num(q.search("count")), source(q)); }
-                    case "POST /api/countcheck/reset" -> { code = 0; body = null; r = m.resetCountCheck(q.search("officer")); }
-                    case "POST /api/alarm" -> { code = 0; body = null; r = m.alarm(q.search("area"), q.search("text")); }
-                    case "POST /api/proposal" -> { code = 0; body = null; r = m.decideProposal("start".equals(q.search("decision")), q.search("officer")); }
-                    case "POST /api/announcement" -> { code = 0; body = null; r = m.decideAnnouncement(num(q.search("id")), "approve".equals(q.search("decision")), q.search("officer")); }
-                    case "POST /api/announce" -> { code = 0; body = null; r = m.announce(q.search("text"), q.search("officer")); }
                     case "GET /api/summary" -> { code = 200; type = "text/plain; charset=utf-8"; body = m.summary(); }
-                    case "GET /api/areas" -> { code = 200; body = areas(); }
-                    case "GET /api/incidents" -> { code = 200; body = incidents(); }
-                    case "GET /api/alerts" -> { code = 200; body = alerts(); }
-                    case "GET /api/route" -> { code = 200; body = route(q); }
-                    case "POST /api/occupancy" -> { code = 0; body = null; r = q.search("delta") != null
-                        ? m.adjustOccupancy(q.search("area"), num(q.search("delta")), source(q))
-                        : m.updateOccupancy(q.search("area"), num(q.search("count")), source(q)); }
-                    case "POST /api/incidents" -> { code = 0; body = null; r = m.reportIncident(q.search("category"), q.search("area"), q.search("details"), q.search("contact"), q.search("language")); }
-                    case "POST /api/resolve" -> { code = 0; body = null; r = m.resolve(num(q.search("id")), q.search("note")); }
-                    case "POST /api/onscene" -> { code = 0; body = null; r = m.confirmOnScene(num(q.search("id"))); }
+                    case "GET /api/areas" -> { code = 200; body = data.areas(); }
+                    case "GET /api/incidents" -> { code = 200; body = data.incidents(); }
+                    case "GET /api/alerts" -> { code = 200; body = data.alerts(); }
+                    case "GET /api/route" -> { code = 200; body = data.route(q.search("from"), q.search("to"), !"0".equals(q.search("avoid"))); }
                     case "GET /scout" -> { code = 200; type = "text/html; charset=utf-8"; body = ScoutPage.page(apiKey != null || (accounts != null && accounts.hasUsers())); }
                     case "GET /api/unit" -> {
                         code = 200;
                         if (q.search("battery") != null && q.search("battery").matches("\\d{1,3}")) m.battery(q.search("id"), Integer.parseInt(q.search("battery")));
                         body = unit(q.search("id"));
                     }
-                    case "GET /api/status" -> { code = 200; body = status(); }
-                    case "POST /api/ack" -> { code = 0; body = null; r = m.acknowledge(q.search("unit")); }
-                    case "POST /api/sos" -> { code = 0; body = null; r = m.sos(q.search("area"), q.search("unit"), q.search("text")); }
-                    case "POST /api/checkin" -> { code = 0; body = null; r = m.officerCheckIn(q.search("officer")); }
-                    case "POST /api/review" -> { code = 0; body = null; r = m.review(num(q.search("id")), q.search("officer"), !"false".equals(q.search("decision")), q.search("note")); }
-                    case "POST /api/evacuate" -> { code = 0; body = null; r = m.evacuate(q.search("zone"), q.search("officer")); }
-                    case "POST /api/evacuate/end" -> { code = 0; body = null; r = m.endEvacuation(q.search("officer")); }
-                    case "POST /api/broadcast" -> { code = 0; body = null; r = m.broadcast(q.search("text"), q.search("officer")); }
-                    case "POST /api/automation" -> { code = 0; body = null; r = automation(q); }
-                    default -> { code = 404; body = err("unknown endpoint " + method + " " + path); }
+                    case "GET /api/status" -> { code = 200; body = data.status(); }
+                    default -> {
+                        r = method.equals("POST") ? change(endpoint, q) : null;
+                        if (r != null) { code = 0; body = null; } else { code = 404; body = err("unknown endpoint " + method + " " + path); }
+                    }
                 }
             } } finally { turns.release(); }
             if (r != null && q.search("back") != null) {
-                ex.getResponseHeaders().add("Location", "/classic?msg=" + java.net.URLEncoder.encode((r.ok ? "OK: " : "REFUSED: ") + r.message, StandardCharsets.UTF_8));
+                ex.add("Location", "/classic?msg=" + java.net.URLEncoder.encode((r.ok ? "OK: " : "REFUSED: ") + r.message, StandardCharsets.UTF_8));
                 code = 303;
                 body = "";
                 type = "text/plain";
@@ -359,249 +350,6 @@ public class ApiServer {
             body = err(String.valueOf(e.getMessage()));
         }
         send(ex, code, type, body);
-    }
-
-    /** @return JSON array of areas (busiest first) with level, trend rate and minutes to CRITICAL */
-    private String areas() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Area a : m.areasByLoad()) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(str(a.id)).append(",\"name\":").append(str(a.name)).append(",\"sector\":").append(str(a.sector))
-              .append(",\"type\":").append(str(a.type)).append(",\"occupancy\":").append(a.occupancy).append(",\"capacity\":").append(a.capacity)
-              .append(",\"percent\":").append(a.percent()).append(",\"level\":").append(str(a.level.name()))
-              .append(",\"ratePerMinute\":").append(Math.round(m.ratePerMinute(a))).append(",\"minutesToCritical\":").append(m.minutesToCritical(a))
-              .append(",\"restricted\":").append(a.restricted).append(",\"evacuating\":").append(a.evacuating)
-              .append(",\"stale\":").append(a.staleSince != null).append(",\"suspect\":").append(str(a.suspect)).append(",\"flowHeld\":").append(a.flowHeld)
-              .append(",\"eventOffset\":").append(a.thresholdOffset)
-              .append(",\"size\":").append(Math.round(a.sizeM2)).append(",\"density\":").append(Math.round(a.density() * 10) / 10.0)
-              .append(",\"densityLevel\":").append(str(m.densityLevel(a).name())).append(",\"camera\":").append(str(m.venue() == null ? null : m.venue().cameraOf(a.id)))
-              .append(",\"unitsHere\":").append(crowdwatch.core.AutoRulesProbe.unitsAt(m, a.id)).append(",\"unitsWanted\":").append(crowdwatch.core.AutoRulesProbe.target(m, a.id)).append(",\"links\":[");
-            int k = 0;
-            for (crowdwatch.ds.Graph.Edge e : m.map().neighbours(m.map().indexOf(a.id))) sb.append(k++ > 0 ? "," : "").append(str(m.map().name(e.to)));
-            sb.append("]}");
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return JSON array of open incidents by priority */
-    private String incidents() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Incident i : m.openIncidentsByPriority()) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(i.id).append(",\"category\":").append(str(i.category.code)).append(",\"priority\":").append(str(i.priority.name()))
-              .append(",\"area\":").append(str(i.area.id)).append(",\"status\":").append(str(i.status.name())).append(",\"unit\":").append(i.unitId == null ? "null" : str(i.unitId))
-              .append(",\"minutesOpen\":").append(i.minutesOpen(m.now())).append(",\"label\":").append(str(i.category.label))
-              .append(",\"reported\":").append(str(i.reported.format(HistoryEntry.FORMAT))).append(",\"automatic\":").append(i.automatic)
-              .append(",\"review\":").append(i.automatic && i.reviewedBy == null).append(",\"device\":").append(str(deviceText(i)))
-              .append(",\"acknowledged\":").append(i.acknowledged != null || i.status == IncidentStatus.ON_SCENE).append(",\"reminders\":").append(i.reminders)
-              .append(",\"lost\":").append(i.lostCase()).append(",\"found\":").append(str(i.foundWhere)).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return what the assigned unit's device has done with an incident, in words */
-    static String deviceText(Incident i) {
-        if (!i.open()) return "closed";
-        if (i.unitId == null) return "waiting in the " + i.priority + " queue";
-        if (i.status == IncidentStatus.ON_SCENE) return "on scene";
-        if (i.acknowledged != null) return "acknowledged";
-        return i.reminders > 0 ? "not acknowledged - reminder sent" : "sent, not yet acknowledged";
-    }
-
-    /** @return true if a unit's device has been in contact within the last 30 seconds */
-    private boolean online(Unit u) {
-        return u.lastContact != null && java.time.Duration.between(u.lastContact, m.now()).getSeconds() < crowdwatch.core.ConsoleRelay.DEVICE_ONLINE_SECONDS;
-    }
-
-    /**
-     * Everything the console's overview needs in one reply: people and capacity, areas per level,
-     * open incidents per priority, units per status and devices online, officer, automation,
-     * dispatches awaiting review, evacuation and the archive count.
-     */
-    private String overview() {
-        int people = 0, cap = 0, open = 0, waiting = m.waitingCount(), unack = 0, online = 0;
-        int[] lv = new int[4], pr = new int[4], us = new int[4];
-        for (Area a : m.areaTree().inOrder()) { people += a.occupancy; cap += a.capacity; lv[a.level.ordinal()]++; }
-        for (Incident i : m.openIncidentsByPriority()) {
-            open++; pr[i.priority.ordinal()]++;
-            if (i.status == IncidentStatus.ASSIGNED && i.acknowledged == null) unack++;
-        }
-        for (Unit u : m.unitTree().inOrder()) { us[u.status.ordinal()]++; if (online(u)) online++; }
-        VenueProfile v = m.venue();
-        String rule = v == null || v.autoCategory == null ? null : v.autoCategory + " at " + v.autoLevel + (v.autoOnTrend ? " or TREND" : "");
-        return "{\"venue\":" + str(m.venueName()) + ",\"code\":" + str(v == null ? "" : v.code) + ",\"now\":" + str(m.now().toLocalTime().withNano(0).toString())
-            + ",\"people\":" + people + ",\"capacity\":" + cap + ",\"areas\":" + m.areaTree().size()
-            + ",\"levels\":{\"LOW\":" + lv[0] + ",\"MODERATE\":" + lv[1] + ",\"HIGH\":" + lv[2] + ",\"CRITICAL\":" + lv[3] + "}"
-            + ",\"incidents\":{\"open\":" + open + ",\"CRITICAL\":" + pr[0] + ",\"HIGH\":" + pr[1] + ",\"NORMAL\":" + pr[2] + ",\"LOW\":" + pr[3]
-            + ",\"waiting\":" + waiting + ",\"unacknowledged\":" + unack + "}"
-            + ",\"units\":{\"total\":" + m.unitTree().size() + ",\"AVAILABLE\":" + us[0] + ",\"BUSY\":" + us[1] + ",\"OFF_DUTY\":" + us[2] + ",\"UNREACHABLE\":" + us[3] + ",\"online\":" + online + "}"
-            + ",\"review\":" + m.awaitingReview().length + ",\"automation\":" + m.automation() + ",\"autoRule\":" + str(rule)
-            + ",\"officer\":" + str(m.officer()) + ",\"officerStatus\":" + str(m.officerStatus()) + ",\"overdue\":" + (m.officer() == null || m.officerStatus().contains("OVERDUE"))
-            + ",\"evacuation\":" + str(m.evacuationZone()) + ",\"archived\":" + m.archivedCount()
-            + ",\"proposal\":" + proposalJson() + ",\"signs\":" + m.pendingAnnouncements().length + ",\"stale\":" + staleCount()
-            + ",\"lost\":" + missingCount() + ",\"events\":" + list(m.activeEvents()) + ",\"countCheck\":" + countCheckJson()
-            + ",\"drill\":" + drill + ",\"heat\":" + heatJson() + ",\"sites\":" + (dataFolder != null && java.nio.file.Files.exists(dataFolder.resolve("sites.txt"))) + "}";
-    }
-
-    /** @return the weather and heat stress as JSON, or null without a recent reading */
-    private String heatJson() {
-        double[] w = m.records.weatherNow(m.now());
-        if (w == null) return "null";
-        return "{\"temp\":" + Math.round(w[0] * 10) / 10.0 + ",\"humidity\":" + Math.round(w[1]) + ",\"index\":" + Math.round(w[2]) + ",\"band\":" + str(m.records.heatBandNow(m.now()))
-            + ",\"outdoor\":" + list(toList(m.outdoorAreas())) + "}";
-    }
-
-    private static LinkedList<String> toList(String[] a) {
-        LinkedList<String> l = new LinkedList<>();
-        for (String x : a) l.addLast(x);
-        return l;
-    }
-
-    /** @return the count check as JSON {expected, counted, difference, ok}, or null if gates are not counted */
-    private String countCheckJson() {
-        long[] c = m.countCheck();
-        if (c == null) return "null";
-        long allowed = Math.max(50, Math.abs(c[0]) * Math.max(0, m.venue().reconcilePercent) / 100);
-        return "{\"expected\":" + c[0] + ",\"counted\":" + c[1] + ",\"difference\":" + c[2] + ",\"ok\":" + (m.venue().reconcilePercent <= 0 || Math.abs(c[2]) <= allowed) + "}";
-    }
-
-    /** @return JSON array of units with status, current task and whether the device is online */
-    private String units() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Unit u : m.unitsSorted()) {
-            if (sb.length() > 1) sb.append(',');
-            Incident t = m.activeIncident(u.id);
-            sb.append("{\"id\":").append(str(u.id)).append(",\"name\":").append(str(u.name)).append(",\"area\":").append(str(u.area.id))
-              .append(",\"sector\":").append(str(u.area.sector)).append(",\"status\":").append(str(u.status.name()))
-              .append(",\"skills\":").append(str(u.skillList())).append(",\"online\":").append(online(u)).append(",\"battery\":").append(u.battery)
-              .append(",\"shift\":").append(str(u.shift)).append(",\"staged\":").append(str(u.stagedFor)).append(",\"reinforcing\":").append(str(u.reinforcing)).append(",\"home\":").append(str(u.home))
-              .append(",\"lastContact\":").append(u.lastContact == null ? "null" : str(u.lastContact.format(HistoryEntry.FORMAT)))
-              .append(",\"task\":").append(t == null ? "null" : "{\"id\":" + t.id + ",\"label\":" + str(t.category.label) + ",\"area\":" + str(t.area.id)
-                  + ",\"priority\":" + str(t.priority.name()) + ",\"device\":" + str(deviceText(t)) + "}")
-              .append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return one incident with its details, unit route and history; {"ok":false} if it is not in memory */
-    private String incident(int id) {
-        Incident i = m.findIncident(id);
-        if (i == null) return err("no incident I" + id + " in memory (it may be archived)");
-        Unit u = i.unitId == null ? null : m.findUnit(i.unitId);
-        String route = "-";
-        if (u != null) {
-            CrowdMonitor.Route r = m.responderRoute(u.area.id, i.area.id);
-            route = u.area == i.area ? "the unit is there" : r.found() ? r.path + " (" + r.walk + " min)" : "no route - ask the control room";
-        }
-        StringBuilder h = new StringBuilder("[");
-        for (HistoryEntry e : i.history) h.append(h.length() > 1 ? "," : "").append("{\"t\":").append(str(e.time.format(HistoryEntry.FORMAT))).append(",\"text\":").append(str(e.text)).append('}');
-        return "{\"ok\":true,\"id\":" + i.id + ",\"category\":" + str(i.category.code) + ",\"label\":" + str(i.category.label) + ",\"priority\":" + str(i.priority.name())
-            + ",\"area\":" + str(i.area.id) + ",\"areaName\":" + str(i.area.name) + ",\"status\":" + str(i.status.name()) + ",\"unit\":" + str(i.unitId)
-            + ",\"reported\":" + str(i.reported.format(HistoryEntry.FORMAT)) + ",\"details\":" + str(i.details) + ",\"contact\":" + str(i.contact)
-            + ",\"language\":" + str(i.language) + ",\"automatic\":" + i.automatic + ",\"reviewedBy\":" + str(i.reviewedBy) + ",\"open\":" + i.open()
-            + ",\"device\":" + str(deviceText(i)) + ",\"route\":" + str(route)
-            + ",\"lost\":" + i.lostCase() + ",\"foundWhere\":" + str(i.foundWhere) + ",\"foundBy\":" + str(i.foundBy) + ",\"search\":" + list(m.searchAreas(i))
-            + ",\"meeting\":" + str(m.meetingFor(i.area.id)) + ",\"history\":" + h + "]}";
-    }
-
-    /** @return the venue's settings, categories, sectors and areas (for forms and the settings view) */
-    private String venue() {
-        VenueProfile v = m.venue();
-        int[] t = m.thresholds();
-        StringBuilder cats = new StringBuilder("["), sectors = new StringBuilder("["), ids = new StringBuilder("["), exits = new StringBuilder("[");
-        for (Category c : m.categoryTree().inOrder()) cats.append(cats.length() > 1 ? "," : "").append("{\"code\":").append(str(c.code)).append(",\"label\":").append(str(c.label)).append(",\"priority\":").append(str(c.priority.name())).append(",\"skill\":").append(str(c.skill)).append('}');
-        crowdwatch.ds.LinkedList<String> seen = new crowdwatch.ds.LinkedList<>();
-        for (Area a : m.areaTree().inOrder()) {
-            ids.append(ids.length() > 1 ? "," : "").append(str(a.id));
-            if (!seen.contains(a.sector)) { seen.addLast(a.sector); sectors.append(sectors.length() > 1 ? "," : "").append(str(a.sector)); }
-        }
-        for (String e : v.exits) exits.append(exits.length() > 1 ? "," : "").append(str(e));
-        return "{\"name\":" + str(v.name) + ",\"code\":" + str(v.code) + ",\"thresholds\":[" + t[0] + "," + t[1] + "," + t[2] + "]"
-            + ",\"auto\":" + (v.autoCategory == null ? "null" : "{\"category\":" + str(v.autoCategory) + ",\"level\":" + str(v.autoLevel) + ",\"trend\":" + v.autoOnTrend + "}")
-            + ",\"supervisionMinutes\":" + v.supervisionMinutes + ",\"ackMinutes\":" + v.ackMinutes + ",\"archiveMinutes\":" + v.archiveMinutes
-            + ",\"gateway\":" + (v.gateway != null) + ",\"automation\":" + m.automation()
-            + ",\"exits\":" + exits + "],\"categories\":" + cats + "],\"sectors\":" + sectors + "],\"areas\":" + ids + "],\"fireZones\":" + fireZoneList(v)
-            + ",\"rules\":{\"stale\":" + v.staleMinutes + ",\"jump\":" + v.jumpPercent + ",\"onscene\":" + v.onSceneMinutes + ",\"autoclose\":" + v.autoCloseMinutes
-            + ",\"maxwait\":" + v.maxWaitMinutes + ",\"preposition\":" + v.prepositionMinutes + ",\"holdflow\":" + v.holdFlow + ",\"cover\":" + v.coverSectors
-            + ",\"propose\":" + v.proposeMinutes + ",\"signs\":" + v.signs + ",\"reinforceHigh\":" + v.reinforceHigh + ",\"reinforceCritical\":" + v.reinforceCritical
-            + ",\"reinforceHold\":" + v.reinforceHold + ",\"reinforceMax\":" + v.reinforceMax + ",\"reinforceSkills\":" + list(v.reinforceSkills) + ",\"meeting\":" + str(v.meetingPoint) + ",\"lostRadius\":" + v.lostRadius + ",\"lostWiden\":" + v.lostWiden
-            + ",\"events\":" + eventsJson(v) + ",\"shifts\":" + list(v.shiftChanges) + "}}";
-    }
-
-    /** @return names of the venue's fire zones as a JSON array */
-    private static String fireZoneList(VenueProfile v) {
-        StringBuilder sb = new StringBuilder("[");
-        for (String[] z : v.fireZones) sb.append(sb.length() > 1 ? "," : "").append(str(z[0]));
-        return sb.append(']').toString();
-    }
-
-    /** @return the venue's scheduled events as JSON */
-    private static String eventsJson(VenueProfile v) {
-        StringBuilder sb = new StringBuilder("[");
-        for (String[] e : v.events) sb.append(sb.length() > 1 ? "," : "").append("{\"time\":").append(str(e[0])).append(",\"minutes\":").append(e[1])
-            .append(",\"zone\":").append(str(e[2])).append(",\"name\":").append(str(e[3])).append('}');
-        return sb.append(']').toString();
-    }
-
-    /** @return the sampled readings of one area: seconds ago and people counted */
-    private String readings(String id) {
-        Area a = m.findArea(id);
-        if (a == null) return err("unknown area " + id);
-        StringBuilder sb = new StringBuilder("{\"ok\":true,\"area\":" + str(a.id) + ",\"capacity\":" + a.capacity + ",\"readings\":[");
-        for (int k = 0; k < a.readings.size(); k++) {
-            Reading r = a.readings.get(k);
-            sb.append(k > 0 ? "," : "").append("{\"s\":").append(java.time.Duration.between(r.time, m.now()).getSeconds()).append(",\"n\":").append(r.occupancy).append('}');
-        }
-        return sb.append("]}").toString();
-    }
-
-    /** @return the evacuation in progress with its plan, or a preview of the plan for {@code zone} */
-    private String evacuation(String zone) {
-        StringBuilder sb = new StringBuilder("{\"active\":" + str(m.evacuationZone()) + ",\"zone\":" + str(m.evacuationZone() != null ? m.evacuationZone() : zone) + ",\"rows\":[");
-        int k = 0;
-        for (String[] r : m.evacuationRows(zone)) {
-            sb.append(k++ > 0 ? "," : "").append("{\"from\":").append(str(r[0])).append(",\"exit\":").append(str(r[1])).append(",\"path\":").append(str(r[2]))
-              .append(",\"min\":").append(str(r[3])).append(",\"inZone\":").append("zone".equals(r[4]))
-              .append(",\"people\":").append(str(r[5])).append(",\"clear\":").append(str(r[6])).append('}');
-        }
-        return sb.append("],\"clearMinutes\":").append(clearAfter(zone)).append('}').toString();
-    }
-
-    /** @return estimated minutes to clear for the plan just listed (the live one, or the preview worked out by evacuationRows) */
-    private int clearAfter(String zone) {
-        int worst = 0;
-        for (String[] r : m.evacuationRows(zone)) if ("zone".equals(r[4]) && r[6] != null && r[6].matches("\\d+") && m.evacuationClearMinutesKnown()) worst = Math.max(worst, Integer.parseInt(r[6]));
-        return worst;
-    }
-
-    /**
-     * @return the venue layout as JSON: drawing size, each area's position and crowd level, exits with their
-     *         flow, links with capacity and lifts, fire zones; "map" is false when the venue has no layout
-     */
-    private String layout() {
-        VenueProfile v = m.venue();
-        if (v == null || v.positions.isEmpty()) return "{\"map\":false}";
-        StringBuilder sb = new StringBuilder("{\"map\":true,\"image\":").append(v.mapFile != null && v.mapBytes() != null).append(",\"w\":").append(v.mapWidth).append(",\"h\":").append(v.mapHeight)
-            .append(",\"scale\":").append(v.scale).append(",\"areas\":[");
-        int k = 0;
-        for (String[] p : v.positions) {
-            Area a = m.findArea(p[0]);
-            if (a == null) continue;
-            String shape = v.shapeOf(a.id);
-            sb.append(k++ > 0 ? "," : "").append("{\"id\":").append(str(a.id)).append(shape == null ? "" : ",\"shape\":[" + shape.trim().replace(' ', ',') + "]").append(",\"x\":").append(p[1]).append(",\"y\":").append(p[2]).append(",\"w\":").append(p[3]).append(",\"h\":").append(p[4])
-              .append(",\"level\":").append(str(a.level.name())).append(",\"pct\":").append(a.percent()).append(",\"restricted\":").append(a.restricted).append(",\"evacuating\":").append(a.evacuating)
-              .append(",\"exit\":").append(v.exits.contains(a.id)).append(",\"flow\":").append(m.exitFlow(a.id)).append(",\"zone\":").append(str(m.fireZoneOf(a.id))).append('}');
-        }
-        sb.append("],\"links\":[");
-        k = 0;
-        for (String[] l : v.links) {
-            sb.append(k++ > 0 ? "," : "").append("{\"a\":").append(str(l[0].toUpperCase())).append(",\"b\":").append(str(l[1].toUpperCase()))
-              .append(",\"capacity\":").append(m.linkCapacity(l[0], l[1])).append(",\"lift\":").append(m.isLift(l[0], l[1])).append('}');
-        }
-        sb.append("],\"zones\":[");
-        k = 0;
-        for (String[] z : v.fireZones) sb.append(k++ > 0 ? "," : "").append(str(z[0]));
-        return sb.append("]}").toString();
     }
 
     // console page files, loaded once from the jar (crowdwatch/net/web/)
@@ -665,62 +413,6 @@ public class ApiServer {
         return o != null && !o.isBlank() ? o : q.search("unit");
     }
 
-    /** @return the evacuation proposal as JSON, or null */
-    private String proposalJson() {
-        String[] p = m.proposal();
-        return p == null ? "null" : "{\"zone\":" + str(p[0]) + ",\"reason\":" + str(p[1]) + ",\"time\":" + str(p[2]) + "}";
-    }
-
-    /** @return number of areas whose sensor data is stale or suspect */
-    private int staleCount() {
-        int n = 0;
-        for (Area a : m.areaTree().inOrder()) if (a.staleSince != null || a.suspect != null) n++;
-        return n;
-    }
-
-    /** @return open lost-person cases where the person is still missing */
-    private int missingCount() {
-        int n = 0;
-        for (Incident i : m.lostCases()) if (i.foundAt == null) n++;
-        return n;
-    }
-
-    /** @return a JSON array of strings */
-    private static String list(crowdwatch.ds.LinkedList<String> l) {
-        StringBuilder sb = new StringBuilder("[");
-        for (String s : l) sb.append(sb.length() > 1 ? "," : "").append(str(s));
-        return sb.append(']').toString();
-    }
-
-    /** @return open lost-person cases with their search areas and found state */
-    private String lost() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Incident i : m.lostCases()) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(i.id).append(",\"details\":").append(str(i.details)).append(",\"area\":").append(str(i.area.id))
-              .append(",\"areaName\":").append(str(i.area.name)).append(",\"priority\":").append(str(i.priority.name())).append(",\"status\":").append(str(i.status.name()))
-              .append(",\"unit\":").append(str(i.unitId)).append(",\"minutes\":").append(i.minutesOpen(m.now())).append(",\"reported\":").append(str(i.reported.format(HistoryEntry.FORMAT)))
-              .append(",\"contact\":").append(str(i.contact)).append(",\"language\":").append(str(i.language))
-              .append(",\"found\":").append(i.foundAt != null).append(",\"foundWhere\":").append(str(i.foundWhere)).append(",\"foundBy\":").append(str(i.foundBy))
-              .append(",\"search\":").append(list(m.searchAreas(i))).append(",\"radius\":").append(i.searchMinutes)
-              .append(",\"meeting\":").append(str(m.meetingFor(i.area.id))).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return public messages: drafts awaiting a decision first, then the latest decided ones */
-    private String announcements() {
-        StringBuilder sb = new StringBuilder("[");
-        int k = 0;
-        for (crowdwatch.core.AutoRules.Announcement a : m.announcements()) {
-            if (k++ == 30) break;
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(a.id).append(",\"time\":").append(str(a.time.format(HistoryEntry.FORMAT))).append(",\"ref\":").append(str(a.ref))
-              .append(",\"text\":").append(str(a.text)).append(",\"status\":").append(str(a.status)).append(",\"by\":").append(str(a.decidedBy)).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
     /**
      * Health check for monitoring tools (no key needed, no venue data): "ok", "degraded" with the
      * reasons, or "fail" (HTTP 503) when no venue is loaded or saving has stopped for 5 minutes.
@@ -731,7 +423,7 @@ public class ApiServer {
         if (fail) problems.addLast("no venue loaded");
         else {
             if (m.officer() == null || m.officerStatus().contains("OVERDUE")) problems.addLast("officer check-in overdue");
-            int stale = staleCount();
+            int stale = data.staleCount();
             if (stale > 0) problems.addLast(stale + " area(s) with stale or suspect sensor data");
             int unreachable = 0;
             for (Unit u : m.unitTree().inOrder()) if (u.status == crowdwatch.model.Enums.UnitStatus.UNREACHABLE) unreachable++;
@@ -740,22 +432,8 @@ public class ApiServer {
             java.time.LocalDateTime saved = m.lastSaved();
             if (saved != null && java.time.Duration.between(saved, m.now()).toMinutes() >= 5) { fail = true; problems.addLast("not saved for " + java.time.Duration.between(saved, m.now()).toMinutes() + " min"); }
         }
-        return "{\"status\":" + str(fail ? "fail" : problems.isEmpty() ? "ok" : "degraded") + ",\"problems\":" + list(problems)
+        return "{\"status\":" + str(fail ? "fail" : problems.isEmpty() ? "ok" : "degraded") + ",\"problems\":" + ConsoleData.list(problems)
             + ",\"time\":" + str(m.now().withNano(0).toString()) + ",\"lastSaved\":" + str(m.lastSaved() == null ? null : m.lastSaved().withNano(0).toString()) + "}";
-    }
-
-    /** @return JSON for the control room: automation, officer, incidents awaiting review, evacuation and its plan */
-    private String status() {
-        StringBuilder sb = new StringBuilder("{\"automation\":").append(m.automation()).append(",\"officer\":").append(str(m.officerStatus()))
-            .append(",\"overdue\":").append(m.officerStatus().contains("OVERDUE") || m.officer() == null).append(",\"review\":[");
-        Incident[] rv = m.awaitingReview();
-        for (int k = 0; k < rv.length; k++)
-            sb.append(k > 0 ? "," : "").append("{\"id\":").append(rv[k].id).append(",\"area\":").append(str(rv[k].area.id))
-              .append(",\"details\":").append(str(rv[k].details)).append(",\"unit\":").append(rv[k].unitId == null ? "null" : str(rv[k].unitId)).append('}');
-        sb.append("],\"evacuation\":").append(str(m.evacuationZone())).append(",\"plan\":[");
-        int k = 0;
-        for (String line : m.evacuationPlan()) sb.append(k++ > 0 ? "," : "").append(str(line));
-        return sb.append("]}").toString();
     }
 
     /** POST /api/automation: on=1 or on=0, with the officer's name (counts as a check-in). */
@@ -765,30 +443,6 @@ public class ApiServer {
         boolean on = !"0".equals(q.search("on"));
         m.setAutomation(on);
         return Result.ok("Automatic dispatch switched " + (on ? "ON" : "OFF") + " by " + m.officer() + ".");
-    }
-
-    /** @return JSON array of the 50 newest alerts */
-    private String alerts() {
-        StringBuilder sb = new StringBuilder("[");
-        int n = 0;
-        for (Alert a : m.alerts()) {
-            if (n++ == 50) break;
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"time\":").append(str(a.time.toString())).append(",\"kind\":").append(str(a.kind.name())).append(",\"ref\":").append(str(a.ref)).append(",\"text\":").append(str(a.text)).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /**
-     * @param q parameters from, to and avoid (avoid=0 gives the shortest walk; anything else the crowd-aware route)
-     * @return JSON with found, walkMinutes and path
-     */
-    private String route(AVLTree<String, String> q) {
-        CrowdMonitor.Route r = m.route(q.search("from"), q.search("to"), !"0".equals(q.search("avoid")));
-        StringBuilder sb = new StringBuilder("{\"found\":").append(r.found()).append(",\"walkMinutes\":").append(r.found() ? r.walk : -1).append(",\"path\":[");
-        int i = 0;
-        for (String s : r.path) sb.append(i++ > 0 ? "," : "").append(str(s));
-        return sb.append("]}").toString();
     }
 
     /** @return the source parameter as an enum, SENSOR if missing */
@@ -807,6 +461,44 @@ public class ApiServer {
         return Integer.parseInt(s.trim().replaceAll("^[A-Za-z]", ""));
     }
 
+    /** The control-room changes: what the Spring Boot server serves as {@code ActionController} endpoints. */
+    public static final String[] ACTIONS = { "POST /api/reassign", "POST /api/escalate", "POST /api/found", "POST /api/foundperson", "POST /api/move", "POST /api/countcheck/reset", "POST /api/alarm", "POST /api/proposal", "POST /api/announcement", "POST /api/announce", "POST /api/occupancy", "POST /api/incidents", "POST /api/resolve", "POST /api/onscene", "POST /api/ack", "POST /api/sos", "POST /api/checkin", "POST /api/review", "POST /api/evacuate", "POST /api/evacuate/end", "POST /api/broadcast", "POST /api/automation" };
+
+    /**
+     * Carries out one control-room change. Call it holding the monitor's lock, after the rights
+     * were checked ({@link #permit}).
+     *
+     * @return the monitor's result, or null if the endpoint is not one of {@link #ACTIONS}
+     * @throws IllegalArgumentException for bad input, such as a number that is not a number (reply 400)
+     */
+    private Result change(String endpoint, AVLTree<String, String> q) {
+        return switch (endpoint) {
+            case "POST /api/reassign" -> m.reassign(num(q.search("id")), q.search("unit"), q.search("reason"));
+            case "POST /api/escalate" -> m.escalate(num(q.search("id")));
+            case "POST /api/found" -> m.found(num(q.search("id")), q.search("area"), by(q));
+            case "POST /api/foundperson" -> m.foundPerson(q.search("area"), q.search("details"), q.search("contact"), by(q));
+            case "POST /api/move" -> m.movePeople(q.search("from"), q.search("to"), num(q.search("count")), source(q));
+            case "POST /api/countcheck/reset" -> m.resetCountCheck(q.search("officer"));
+            case "POST /api/alarm" -> m.alarm(q.search("area"), q.search("text"));
+            case "POST /api/proposal" -> m.decideProposal("start".equals(q.search("decision")), q.search("officer"));
+            case "POST /api/announcement" -> m.decideAnnouncement(num(q.search("id")), "approve".equals(q.search("decision")), q.search("officer"));
+            case "POST /api/announce" -> m.announce(q.search("text"), q.search("officer"));
+            case "POST /api/occupancy" -> q.search("delta") != null ? m.adjustOccupancy(q.search("area"), num(q.search("delta")), source(q)) : m.updateOccupancy(q.search("area"), num(q.search("count")), source(q));
+            case "POST /api/incidents" -> m.reportIncident(q.search("category"), q.search("area"), q.search("details"), q.search("contact"), q.search("language"));
+            case "POST /api/resolve" -> m.resolve(num(q.search("id")), q.search("note"));
+            case "POST /api/onscene" -> m.confirmOnScene(num(q.search("id")));
+            case "POST /api/ack" -> m.acknowledge(q.search("unit"));
+            case "POST /api/sos" -> m.sos(q.search("area"), q.search("unit"), q.search("text"));
+            case "POST /api/checkin" -> m.officerCheckIn(q.search("officer"));
+            case "POST /api/review" -> m.review(num(q.search("id")), q.search("officer"), !"false".equals(q.search("decision")), q.search("note"));
+            case "POST /api/evacuate" -> m.evacuate(q.search("zone"), q.search("officer"));
+            case "POST /api/evacuate/end" -> m.endEvacuation(q.search("officer"));
+            case "POST /api/broadcast" -> m.broadcast(q.search("text"), q.search("officer"));
+            case "POST /api/automation" -> automation(q);
+            default -> null;
+        };
+    }
+
     /** Switches on personal logins, device codes and the audit log (null switches them off). */
     public void setAccounts(Accounts a) { accounts = a; }
 
@@ -819,7 +511,7 @@ public class ApiServer {
     }
 
     /** @return the token of an {@code Authorization: Bearer} header, or null */
-    private static String bearer(HttpExchange ex) {
+    private static String bearer(Exchange ex) {
         String a = header(ex, "Authorization");
         return a != null && a.regionMatches(true, 0, "Bearer ", 0, 7) ? a.substring(7).trim() : null;
     }
@@ -828,8 +520,8 @@ public class ApiServer {
     static final String COOKIE = "cw_session";
 
     /** @return the value of a cookie, or null */
-    private static String cookie(HttpExchange ex, String name) {
-        for (String h : ex.getRequestHeaders().getOrDefault("Cookie", java.util.List.of()))
+    private static String cookie(Exchange ex, String name) {
+        for (String h : ex.headers("Cookie"))
             for (String part : h.split(";")) {
                 String t = part.trim();
                 if (t.startsWith(name + "=")) return t.substring(name.length() + 1);
@@ -841,23 +533,23 @@ public class ApiServer {
      * Sign-in and sign-out of the plain dashboard (no JavaScript needed): a form post that sets or
      * clears an HttpOnly, SameSite=Strict session cookie (Secure with HTTPS) and goes back to /classic.
      */
-    private void classicSign(HttpExchange ex, Accounts acc, String endpoint, AVLTree<String, String> q) throws IOException {
-        String flags = "; Path=/; HttpOnly; SameSite=Strict" + (ex instanceof com.sun.net.httpserver.HttpsExchange ? "; Secure" : "");
+    private void classicSign(Exchange ex, Accounts acc, String endpoint, AVLTree<String, String> q) throws IOException {
+        String flags = "; Path=/; HttpOnly; SameSite=Strict" + (ex.secure ? "; Secure" : "");
         String back = "/classic";
         if (endpoint.equals("POST /classic/logout")) {
             if (acc != null) acc.logout(cookie(ex, COOKIE));
-            ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=; Max-Age=0" + flags);
+            ex.add("Set-Cookie", COOKIE + "=; Max-Age=0" + flags);
         } else if (acc != null) {
             Accounts.Login in = acc.login(q.search("user"), q.search("password"), q.search("code"), m.now());
-            if (in.token != null) ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=" + in.token + "; Max-Age=" + Accounts.SESSION_HOURS * 3600 + flags);
+            if (in.token != null) ex.add("Set-Cookie", COOKIE + "=" + in.token + "; Max-Age=" + Accounts.SESSION_HOURS * 3600 + flags);
             else back = "/classic?msg=" + java.net.URLEncoder.encode(in.needCode ? "Enter the code from your authenticator app" : "Wrong user name or password, or the account is locked", StandardCharsets.UTF_8);
         }
-        ex.getResponseHeaders().add("Location", back);
+        ex.add("Location", back);
         send(ex, 303, "text/plain", "");
     }
 
     /** @return who is calling: a signed-in user, a scout device code, the scout key, or null */
-    private Accounts.Who identify(Accounts acc, HttpExchange ex, String given) {
+    private Accounts.Who identify(Accounts acc, Exchange ex, String given) {
         if (acc != null) {
             Accounts.Who w = acc.session(bearer(ex), m.now());
             if (w != null) return w;
@@ -897,14 +589,151 @@ public class ApiServer {
             return null;
         }
         if (who != SYSTEM) q.insert("officer", who.name);
-        Accounts.Role need;
-        if (in(endpoint, ADMIN_ONLY)) need = Accounts.Role.ADMIN;
-        else if (in(endpoint, OFFICER_GETS)) need = Accounts.Role.OFFICER;
-        else if (endpoint.startsWith("GET ")) need = Accounts.Role.OPERATOR;
-        else if (in(endpoint, OPERATOR_POSTS)) need = Accounts.Role.OPERATOR;
-        else need = Accounts.Role.OFFICER;
-        return who.atLeast(need) ? null : "your role " + who.role + " cannot use " + endpoint + " (needs " + need + ")";
+        return refusal(who.role.name(), endpoint);
     }
+
+    /** @return the least role a personal user needs for an endpoint (each role has the rights of the roles below it) */
+    static Accounts.Role requiredRole(String endpoint) {
+        if (in(endpoint, ADMIN_ONLY)) return Accounts.Role.ADMIN;
+        if (in(endpoint, OFFICER_GETS)) return Accounts.Role.OFFICER;
+        if (endpoint.startsWith("GET ")) return Accounts.Role.OPERATOR;
+        if (in(endpoint, OPERATOR_POSTS)) return Accounts.Role.OPERATOR;
+        return Accounts.Role.OFFICER;
+    }
+
+    /**
+     * The role rules of every endpoint, in one place for this server and the Spring Boot server
+     * (whose Spring Security checks them before a request reaches the API). A device code may
+     * also act only for its own unit; that is checked when the request is handled.
+     *
+     * @param role     OPERATOR, OFFICER or ADMIN; DEVICE or SCOUT for a scout phone
+     * @param endpoint method and path, e.g. "POST /api/evacuate"
+     * @return null if allowed, otherwise the reason (HTTP 403)
+     */
+    public static String refusal(String role, String endpoint) {
+        if (in(endpoint, PUBLIC)) return null;
+        if ("DEVICE".equals(role) || "SCOUT".equals(role)) return in(endpoint, SCOUT) ? null : "a scout device cannot use " + endpoint;
+        Accounts.Role have;
+        try { have = Accounts.Role.valueOf(role); } catch (IllegalArgumentException | NullPointerException e) { return "unknown role " + role; }
+        Accounts.Role need = requiredRole(endpoint);
+        return have.ordinal() >= need.ordinal() ? null : "your role " + have + " cannot use " + endpoint + " (needs " + need + ")";
+    }
+
+    /** @return true for pages and endpoints anyone may use without signing in (they hold no venue data) */
+    public static boolean isPublic(String endpoint) { return in(endpoint, PUBLIC); }
+
+    /** Who is calling, as seen by both web servers. */
+    public record Caller(String name, String role, String unit, boolean system) { }
+
+    /**
+     * Works out who is calling: the control key (or an open server), a signed-in user (bearer
+     * token or the plain dashboard's cookie), a scout device code or the scout key.
+     *
+     * @param ex    the request (its body is not read)
+     * @param given the key from the X-Api-Key header or the {@code key} field, or null
+     * @return the caller, or null if not signed in
+     */
+    public Caller caller(Exchange ex, String given) {
+        Accounts.Who w = who(ex, given);
+        if (w == null) return null;
+        return new Caller(w.name, w.role != null ? w.role.name() : w.unit != null ? "DEVICE" : "SCOUT", w.unit, w == SYSTEM);
+    }
+
+    // the caller as the API sees it: SYSTEM for the control key or an open server, else a user, device or the scout key
+    private Accounts.Who who(Exchange ex, String given) {
+        Accounts acc = accounts;
+        boolean open = apiKey == null && (acc == null || !acc.hasUsers());
+        boolean control = open || (apiKey != null && apiKey.equals(given));
+        return control ? SYSTEM : identify(acc, ex, given);
+    }
+
+    /** The reply to a control-room change: HTTP status and JSON body ({"ok":..,"message":..}). */
+    public record Outcome(int code, boolean ok, String message) {
+        /** @return the JSON body */
+        public String json() { return "{\"ok\":" + ok + ",\"message\":" + str(message) + "}"; }
+    }
+
+    /**
+     * A control-room change for the Spring Boot server's controllers, handled as this server
+     * handles it: the caller's rights (for a device code: only its own unit's tasks; for a
+     * signed-in user the officer name is always their own), the monitor's lock with fair turns,
+     * the cache cleared, and the audit log written.
+     *
+     * @param ex       the request, for working out the caller (its body is not read)
+     * @param given    the key from the X-Api-Key header or the {@code key} field, or null
+     * @param endpoint one of {@link #ACTIONS}
+     * @param params   the query and form fields
+     * @return 200 done, 422 refused by a rule, 400 bad input, 401 not signed in, 403 not allowed, 404 not a change
+     */
+    public Outcome act(Exchange ex, String given, String endpoint, java.util.Map<String, String> params) {
+        extras.requests.incrementAndGet();
+        AVLTree<String, String> q = new AVLTree<>();
+        params.forEach((k, v) -> { if (k != null && v != null) q.insert(k, v); });
+        Accounts.Who who = who(ex, given);
+        if (who == null) return new Outcome(401, false, signInMessage());
+        try {
+            String refused = permit(who, endpoint, q);
+            if (refused != null) {
+                audit(who, endpoint, q, false, refused);
+                return new Outcome(403, false, refused);
+            }
+            cache.clear();
+            Result r;
+            turns.acquireUninterruptibly();
+            try { synchronized (m) { r = change(endpoint, q); } } finally { turns.release(); }
+            if (r == null) return new Outcome(404, false, "unknown endpoint " + endpoint);
+            audit(who, endpoint, q, r.ok, r.message);
+            return new Outcome(r.ok ? 200 : 422, r.ok, r.message);
+        } catch (RuntimeException e) {
+            return new Outcome(400, false, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /** @return true if an address without the control key has sent too many requests this second (counts this one) */
+    public boolean tooMany(String remote) { return limiter.tooMany(remote); }
+
+    /** @return the message for a request that needs a sign-in */
+    public String signInMessage() { Accounts acc = accounts; return acc != null && acc.hasUsers() ? "please sign in" : "missing or wrong API key"; }
+
+    /**
+     * Records a refused change in the audit log, for refusals made before a request reaches the
+     * API (by Spring Security).
+     *
+     * @param params the query and form parameters, URL-encoded
+     */
+    public void auditRefused(Caller c, String endpoint, String params, String reason) {
+        Accounts.Who who = c == null ? null : new Accounts.Who(c.name(), c.role() == null || c.role().equals("DEVICE") || c.role().equals("SCOUT") ? null : Accounts.Role.valueOf(c.role()), c.unit());
+        audit(who, endpoint, params(params), false, reason);
+    }
+
+    /**
+     * A console read for the Spring Boot server's controllers, handled as this server handles it:
+     * from the half-second cache (shared with this server), or built while holding the monitor's
+     * lock, taking fair turns with the other requests. Rights are checked before (Spring Security).
+     *
+     * @param endpoint e.g. "GET /api/areas"
+     * @param rawQuery the query as received, or null (part of the cache key)
+     * @param type     content type of the reply (kept with a cached reply)
+     * @param build    builds the reply from the console data
+     * @return the reply body
+     */
+    public String read(String endpoint, String rawQuery, String type, java.util.function.Function<ConsoleData, String> build) {
+        extras.requests.incrementAndGet();
+        String key = endpoint + "?" + rawQuery;
+        boolean cached = in(endpoint, CACHED);
+        if (cached) {
+            String[] hit = cache.get(key);
+            if (hit != null) return hit[1];
+        }
+        String body;
+        turns.acquireUninterruptibly();
+        try { synchronized (m) { body = build.apply(data); } } finally { turns.release(); }
+        if (cached) cache.put(key, type, body);
+        return body;
+    }
+
+    /** JSON error body, as every endpoint gives it. */
+    public static String errorJson(String message) { return err(message); }
 
     // parameters that are never written to the audit log
     private static final String[] SECRET = { "password", "key", "token", "back" };
@@ -920,7 +749,7 @@ public class ApiServer {
     }
 
     /** POST /api/login: user and password; replies with a session token, or 401. */
-    private void login(HttpExchange ex, Accounts acc, AVLTree<String, String> q) throws IOException {
+    private void login(Exchange ex, Accounts acc, AVLTree<String, String> q) throws IOException {
         String type = "application/json";
         if (acc == null || !acc.hasUsers()) { send(ex, 404, type, err("personal logins are not switched on for this server")); return; }
         Accounts.Login in = acc.login(q.search("user"), q.search("password"), q.search("code"), m.now());
@@ -1022,7 +851,7 @@ public class ApiServer {
     }
 
     /** @return the first value of a request header, or null */
-    private static String header(HttpExchange ex, String name) { return ex.getRequestHeaders().getFirst(name); }
+    private static String header(Exchange ex, String name) { return ex.header(name); }
 
     /**
      * Parses URL-encoded parameters ({@code a=1&b=2}) into an AVL tree. A key without '=' gets an empty value.
@@ -1060,29 +889,68 @@ public class ApiServer {
     }
 
     /** @return a JSON error object */
-    private static String err(String msg) { return "{\"ok\":false,\"message\":" + str(msg) + "}"; }
+    static String err(String msg) { return "{\"ok\":false,\"message\":" + str(msg) + "}"; }
 
     /**
-     * Sends the response. A 303 redirect has no body. CORS is open so other web pages can call the API.
+     * Stores the reply in the exchange. A 303 redirect has no body. CORS is open (for JSON and
+     * text replies) so other web pages can call the API.
      */
-    private static void sendBytes(HttpExchange ex, int code, String type, byte[] b) throws IOException {
-        if (ex instanceof com.sun.net.httpserver.HttpsExchange) ex.getResponseHeaders().set("Strict-Transport-Security", "max-age=31536000");
-        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-        ex.getResponseHeaders().set("Content-Type", type);
-        ex.sendResponseHeaders(code, b.length == 0 ? -1 : b.length);
-        if (b.length > 0) try (OutputStream o = ex.getResponseBody()) { o.write(b); }
-        ex.close();
+    private static void sendBytes(Exchange ex, int code, String type, byte[] b) {
+        if (ex.secure) ex.set("Strict-Transport-Security", "max-age=31536000");
+        ex.set("X-Content-Type-Options", "nosniff");
+        ex.set("Content-Type", type);
+        ex.code = code;
+        ex.replyBody = b;
     }
 
-    private static void send(HttpExchange ex, int code, String type, String body) throws IOException {
-        byte[] b = body.getBytes(StandardCharsets.UTF_8);
-        if (ex instanceof com.sun.net.httpserver.HttpsExchange) ex.getResponseHeaders().set("Strict-Transport-Security", "max-age=31536000");
-        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-        ex.getResponseHeaders().set("Content-Type", type);
-        ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        ex.sendResponseHeaders(code, code == 303 ? -1 : b.length);
-        if (code != 303) try (OutputStream o = ex.getResponseBody()) { o.write(b); }
-        ex.close();
+    private static void send(Exchange ex, int code, String type, String body) {
+        ex.set("Access-Control-Allow-Origin", "*");
+        sendBytes(ex, code, type, code == 303 ? new byte[0] : body.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * One request and its reply, independent of the web server that received it. The JDK server
+     * of {@link #start} and the Spring Boot server ({@code crowdwatch.spring}) both build one,
+     * call {@link #dispatch}, then send {@link #code}, {@link #replyHeaders} and {@link #replyBody}.
+     */
+    public static final class Exchange {
+        final String method, path, rawQuery, remote;
+        final boolean secure;
+        final java.io.InputStream body;
+        private final java.util.function.Function<String, java.util.List<String>> requestHeaders;
+        /** Status code of the reply (set by {@link #dispatch}). */
+        public int code = 500;
+        /** Reply headers as name, value pairs, in order. */
+        public final java.util.List<String[]> replyHeaders = new java.util.ArrayList<>();
+        /** Reply body (empty for none). */
+        public byte[] replyBody = new byte[0];
+        // true when the web server in front already applied the rate limit to this request
+        boolean limitChecked;
+
+        /** Tells the API that the rate limit was already applied to this request (so it is counted once). */
+        public void rateLimitChecked() { limitChecked = true; }
+
+        /**
+         * @param method   GET or POST
+         * @param path     path without the query, e.g. /api/areas
+         * @param rawQuery query string still URL-encoded, or null
+         * @param headers  all values of a request header by name (null or empty if absent)
+         * @param body     the request body (read only for POST)
+         * @param remote   the caller's IP address (for the rate limit and the audit log)
+         * @param secure   true if the request came over HTTPS
+         */
+        public Exchange(String method, String path, String rawQuery, java.util.function.Function<String, java.util.List<String>> headers,
+                        java.io.InputStream body, String remote, boolean secure) {
+            this.method = method; this.path = path; this.rawQuery = rawQuery; this.requestHeaders = headers;
+            this.body = body == null ? java.io.InputStream.nullInputStream() : body; this.remote = remote; this.secure = secure;
+        }
+
+        java.util.List<String> headers(String name) { java.util.List<String> l = requestHeaders.apply(name); return l == null ? java.util.List.of() : l; }
+
+        String header(String name) { java.util.List<String> l = headers(name); return l.isEmpty() ? null : l.get(0); }
+
+        void set(String name, String value) { replyHeaders.removeIf(h -> h[0].equalsIgnoreCase(name)); replyHeaders.add(new String[] { name, value }); }
+
+        void add(String name, String value) { replyHeaders.add(new String[] { name, value }); }
+    }
 }

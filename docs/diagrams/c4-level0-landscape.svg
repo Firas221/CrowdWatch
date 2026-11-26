@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1080" viewBox="0 0 1700 1080" font-family="DejaVu Sans, Arial, sans-serif"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker></defs><rect width="1700" height="1080" fill="#fff"/><text x="24" y="40" font-size="26" fill="#1f2937" text-anchor="start" font-weight="700">C4 level 0 - System landscape: CrowdWatch across an organisation&#x27;s venues</text>
+<circle cx="410.0" cy="86" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="260" y="106" width="300" height="134" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="410.0" y="140" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Head-office manager</text>
+<text x="410.0" y="161" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="410.0" y="186.0" font-size="13" fill="#fff" text-anchor="middle">Follows every site from the head</text>
+<text x="410.0" y="202.9" font-size="13" fill="#fff" text-anchor="middle">office</text>
+<rect x="980" y="80" width="420" height="170" rx="10" fill="#1168bd" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1190.0" y="112" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CrowdWatch - head office</text>
+<text x="1190.0" y="133" font-size="13" fill="#e8f0fb" text-anchor="middle">[Software system]</text>
+<text x="1190.0" y="158.0" font-size="13" fill="#fff" text-anchor="middle">Sites view: each site&#x27;s people, crowded areas,</text>
+<text x="1190.0" y="174.9" font-size="13" fill="#fff" text-anchor="middle">incidents, evacuation and officer (sites.txt).</text>
+<line x1="560" y1="165" x2="980" y2="165" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="692" y="150" width="156" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="770.0" y="165.0" font-size="13" fill="#333" text-anchor="middle">Opens the Sites view</text>
+<text x="770.0" y="180.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[browser, HTTPS]</text>
+<rect x="40" y="300" width="1620" height="440" rx="8" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="10 6"/>
+<text x="1646" y="326" font-size="17" fill="#333" text-anchor="end" font-weight="700">Venue operator: its venues</text>
+<text x="1646" y="345" font-size="13" fill="#555" text-anchor="end">[Enterprise]</text>
+<rect x="80" y="380" width="345" height="170" rx="10" fill="#1168bd" stroke="#0b3c6e" stroke-width="2"/>
+<text x="252.5" y="412" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CrowdWatch - Airport</text>
+<text x="252.5" y="433" font-size="13" fill="#e8f0fb" text-anchor="middle">[Software system]</text>
+<text x="252.5" y="458.0" font-size="13" fill="#fff" text-anchor="middle">Terminals, gates, security screening;</text>
+<text x="252.5" y="474.9" font-size="13" fill="#fff" text-anchor="middle">passengers. Its own server, database and</text>
+<text x="252.5" y="491.8" font-size="13" fill="#fff" text-anchor="middle">control room.</text>
+<rect x="475" y="380" width="345" height="170" rx="10" fill="#1168bd" stroke="#0b3c6e" stroke-width="2"/>
+<text x="647.5" y="412" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CrowdWatch - Stadium</text>
+<text x="647.5" y="433" font-size="13" fill="#e8f0fb" text-anchor="middle">[Software system]</text>
+<text x="647.5" y="458.0" font-size="13" fill="#fff" text-anchor="middle">Stands, concourses, turnstiles; fans. Its</text>
+<text x="647.5" y="474.9" font-size="13" fill="#fff" text-anchor="middle">own server, database and control room.</text>
+<rect x="870" y="380" width="345" height="170" rx="10" fill="#1168bd" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1042.5" y="412" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CrowdWatch - Holy Mosques</text>
+<text x="1042.5" y="433" font-size="13" fill="#e8f0fb" text-anchor="middle">[Software system]</text>
+<text x="1042.5" y="458.0" font-size="13" fill="#fff" text-anchor="middle">Masjid al-Haram and al-Masjid an-Nabawi;</text>
+<text x="1042.5" y="474.9" font-size="13" fill="#fff" text-anchor="middle">pilgrims. Its own server, database and</text>
+<text x="1042.5" y="491.8" font-size="13" fill="#fff" text-anchor="middle">control room.</text>
+<rect x="1265" y="380" width="345" height="170" rx="10" fill="#1168bd" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1437.5" y="412" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CrowdWatch - Mall</text>
+<text x="1437.5" y="433" font-size="13" fill="#e8f0fb" text-anchor="middle">[Software system]</text>
+<text x="1437.5" y="458.0" font-size="13" fill="#fff" text-anchor="middle">Floors, food court, cinema; shoppers. Its</text>
+<text x="1437.5" y="474.9" font-size="13" fill="#fff" text-anchor="middle">own server, database and control room.</text>
+<line x1="980" y1="232" x2="425" y2="410" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="689" y="306" width="26" height="20" fill="#fff" fill-opacity="0.92"/>
+<text x="702.5" y="321.0" font-size="13" fill="#333" text-anchor="middle"></text>
+<line x1="1036" y1="250" x2="801" y2="380" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="906" y="300" width="26" height="20" fill="#fff" fill-opacity="0.92"/>
+<text x="918.75" y="315.0" font-size="13" fill="#333" text-anchor="middle"></text>
+<line x1="1148" y1="250" x2="1084" y2="380" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1078" y="300" width="156" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1156.25" y="315.0" font-size="13" fill="#333" text-anchor="middle">Reads the overview</text>
+<text x="1156.25" y="330.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS, control key]</text>
+<line x1="1260" y1="250" x2="1367" y2="380" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1301" y="300" width="26" height="20" fill="#fff" fill-opacity="0.92"/>
+<text x="1313.75" y="315.0" font-size="13" fill="#333" text-anchor="middle"></text>
+<rect x="600" y="600" width="500" height="110" rx="10" fill="#08427b" stroke="#0b3c6e" stroke-width="2"/>
+<text x="850.0" y="632" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Control room of each venue</text>
+<text x="850.0" y="653" font-size="13" fill="#e8f0fb" text-anchor="middle">[People]</text>
+<text x="850.0" y="678.0" font-size="13" fill="#fff" text-anchor="middle">operators, officers, response units, visitors</text>
+<line x1="581" y1="600" x2="252" y2="550" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<line x1="759" y1="600" x2="648" y2="550" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<line x1="937" y1="600" x2="1042" y2="550" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<line x1="1114" y1="600" x2="1438" y2="550" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text x="1120" y="640" font-size="13" fill="#333" text-anchor="start">use their own site</text>
+<rect x="80" y="840" width="345" height="130" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="252.5" y="872" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Company directory</text>
+<text x="252.5" y="893" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="252.5" y="918.0" font-size="13" fill="#fff" text-anchor="middle">LDAP / Active Directory sign-in</text>
+<line x1="252" y1="740" x2="252" y2="840" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text x="262.5" y="785" font-size="13" fill="#333" text-anchor="start">The venues: sign users in</text>
+<text x="262.5" y="801" font-size="12" fill="#666" text-anchor="start" font-style="italic">[LDAPS]</text>
+<rect x="475" y="840" width="345" height="130" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="647.5" y="872" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">SMS, WhatsApp, e-mail</text>
+<text x="647.5" y="893" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="647.5" y="918.0" font-size="13" fill="#fff" text-anchor="middle">Urgent alerts to duty officers</text>
+<line x1="648" y1="740" x2="648" y2="840" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text x="657.5" y="785" font-size="13" fill="#333" text-anchor="start">The venues: send alerts</text>
+<text x="657.5" y="801" font-size="12" fill="#666" text-anchor="start" font-style="italic">[HTTPS JSON]</text>
+<rect x="870" y="840" width="345" height="130" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1042.5" y="872" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Monitoring</text>
+<text x="1042.5" y="893" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="1042.5" y="918.0" font-size="13" fill="#fff" text-anchor="middle">Prometheus, health checks</text>
+<line x1="1042" y1="740" x2="1042" y2="840" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text x="1052.5" y="785" font-size="13" fill="#333" text-anchor="start">The venues: are watched by</text>
+<text x="1052.5" y="801" font-size="12" fill="#666" text-anchor="start" font-style="italic">[HTTPS]</text>
+<rect x="1265" y="840" width="345" height="130" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1437.5" y="872" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Counting systems</text>
+<text x="1437.5" y="893" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="1437.5" y="918.0" font-size="13" fill="#fff" text-anchor="middle">Turnstiles, door counters, cameras</text>
+<line x1="1438" y1="840" x2="1438" y2="740" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<text x="1447.5" y="785" font-size="13" fill="#333" text-anchor="start">Send counts</text>
+<text x="1447.5" y="801" font-size="12" fill="#666" text-anchor="start" font-style="italic">[file, HTTPS, TCP]</text>
+<text x="850" y="1030.0" font-size="13" fill="#444" text-anchor="middle">Each venue runs its own CrowdWatch with its own data; the head office only reads their overviews.</text></svg>

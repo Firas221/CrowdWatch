@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build the Spring Boot server and the React console",
+      "type": "shell",
+      "command": "./build-spring.sh",
+      "windows": { "command": ".\\build-spring.bat" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run the Spring Boot server (airport, port 8080)",
+      "type": "shell",
+      "command": "./program/run-server.sh airport 8080",
+      "windows": { "command": ".\\program\\run-server.bat airport 8080" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "React console with live reload (port 5173, needs a server on 8080)",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

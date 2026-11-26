@@ -1,0 +1,7 @@
+{
+  "name": "crowdwatch-guide",
+  "private": true,
+  "description": "Builds docs/CrowdWatch_Design-and-Integration-Guide.docx (and the PDF with LibreOffice). See build-guide.sh.",
+  "scripts": { "build": "node make-guide.js" },
+  "dependencies": { "docx": "9.7.1" }
+}

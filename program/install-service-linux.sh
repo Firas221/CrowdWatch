@@ -3,6 +3,7 @@
 # Run as root:   sudo ./install-service-linux.sh        (settings in service.conf)
 # Remove:        sudo ./install-service-linux.sh remove
 # Logs:          journalctl -u crowdwatch   and   crowdwatch-data/logs/
+# Runs CrowdWatch-server.jar (Spring Boot) when it is in this folder, otherwise CrowdWatch.jar; checked at every start.
 set -e
 cd "$(dirname "$0")"
 DIR="$(pwd)"
@@ -25,7 +26,7 @@ Wants=network-online.target
 User=$RUNAS
 WorkingDirectory=$DIR
 EnvironmentFile=$DIR/service.conf
-ExecStart=/bin/sh -c 'exec $JAVA -jar CrowdWatch.jar --server "\${VENUE:-airport}" "\${PORT:-8080}" \${CONTROL_KEY:+"\$CONTROL_KEY"} \${SCOUT_KEY:+"\$SCOUT_KEY"} \${CROWDWATCH_HTTPS:+--https}'
+ExecStart=/bin/sh -c 'JAR=CrowdWatch-server.jar; [ -f "\$JAR" ] || JAR=CrowdWatch.jar; exec $JAVA -jar "\$JAR" --server "\${VENUE:-airport}" "\${PORT:-8080}" \${CONTROL_KEY:+"\$CONTROL_KEY"} \${SCOUT_KEY:+"\$SCOUT_KEY"} \${CROWDWATCH_HTTPS:+--https}'
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=60

@@ -40,3 +40,16 @@ Remaining limits
   - 600+ half-sent connections at once can still delay replies by up to 5 s: use a reverse proxy
     (for example nginx) with per-address connection limits and TLS in front of the server.
   - Keys are shared per role, not personal.
+
+Version 3.0: built-in server and Spring Boot server on the same computer
+  The same phases against CrowdWatch.jar --server and CrowdWatch-server.jar, one after the other, on a
+  4-core computer slower than the one above (so compare the two columns, not with the table above).
+  Summary: spring-and-built-in.txt; raw output: results-3.0-built-in.txt, results-3.0-spring.txt.
+  Measure                                        Built-in server                     Spring Boot server
+  One client                                     295 req/s, no errors                295 req/s, no errors
+  Busy venue                                     465 req/s, scout p99 378 ms         483 req/s, scout p99 189 ms
+  1,024 clients                                  242 req/s, no errors                262 req/s, no errors
+  600 half-sent connections                      others answered after 4.9 s         others answered in 1 ms
+  5,000 idle connections                         1 ms; 543 threads, 964 MB           1 ms; 434 threads, 821 MB
+  Tomcat reads requests without tying up a worker thread, so stalled connections no longer hold up others
+  (the earlier slow-client limit of the built-in server).

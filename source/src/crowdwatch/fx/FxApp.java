@@ -189,6 +189,7 @@ public class FxApp extends Application {
         watchdog = new Watchdog(m);
         watchdog.start();
         autosave.scheduleAtFixedRate(this::autosaveTick, App.AUTOSAVE_SECONDS, App.AUTOSAVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+        m.addListener(new crowdwatch.db.SaveSoon(autosave, this::autosaveTick));
         m.addListener(new MonitorListener() {
             public void onChange() { scheduleRefresh(); }
             public void onAlert(Alert a) {

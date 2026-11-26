@@ -3,6 +3,7 @@
 *.bat   text eol=crlf
 *.cmd   text eol=crlf
 *.sh    text eol=lf
+mvnw    text eol=lf
 *.java  text eol=lf
 *.venue text eol=lf
 *.js    text eol=lf

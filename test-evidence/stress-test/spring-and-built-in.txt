@@ -1,0 +1,11 @@
+# Version 3.0: the same load (LoadTest baseline venue ramp slow flood) against the built-in JDK server
+# (CrowdWatch.jar --server) and the Spring Boot server (CrowdWatch-server.jar), one after the other on the
+# same 4-core computer, load generator on the same computer. big.venue, -Xmx512m, rate limit off.
+# Raw output: results-3.0-built-in.txt and results-3.0-spring.txt. The guide's table is read from the lines below.
+Measure | Built-in server | Spring Boot server
+One client, one request at a time | 295 req/s, no errors | 295 req/s, no errors
+Busy venue: 250 scout phones, 20 consoles, 400 sensors, 2 reports/s | 465 req/s, no errors; scout p99 378 ms | 483 req/s, no errors; scout p99 189 ms
+Busy venue: console reads (areas) p99 | 619 ms | 304 ms
+1,024 clients sending back to back | 242 req/s, no errors | 262 req/s, no errors
+600 connections sending half a request | others answered after 4.9 s | others answered in 1 ms
+5,000 idle connections | answered in 1 ms; 543 threads, 964 MB | answered in 1 ms; 434 threads, 821 MB

@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1240" viewBox="0 0 1700 1240" font-family="DejaVu Sans, Arial, sans-serif"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker></defs><rect width="1700" height="1240" fill="#fff"/><text x="24" y="40" font-size="26" fill="#1f2937" text-anchor="start" font-weight="700">C4 level 2 - Containers: what CrowdWatch is made of</text>
+<circle cx="240.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="80" y="96" width="320" height="134" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="240.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Control room</text>
+<text x="240.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="240.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">Operators, officers, administrators, in</text>
+<text x="240.0" y="192.9" font-size="13" fill="#fff" text-anchor="middle">a browser</text>
+<circle cx="610.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="450" y="96" width="320" height="134" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="610.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Response unit</text>
+<text x="610.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="610.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">Scout phone</text>
+<circle cx="960.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="800" y="96" width="320" height="134" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="960.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Visitor</text>
+<text x="960.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="960.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">Phone, QR code</text>
+<circle cx="1450.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="1290" y="96" width="320" height="134" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="1450.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Control room</text>
+<text x="1450.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="1450.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">On one computer (desktop)</text>
+<rect x="40" y="290" width="1620" height="650" rx="8" fill="none" stroke="#444" stroke-width="2" stroke-dasharray="10 6"/>
+<text x="1646" y="316" font-size="17" fill="#333" text-anchor="end" font-weight="700">CrowdWatch</text>
+<text x="1646" y="335" font-size="13" fill="#555" text-anchor="end">[Software system]</text>
+<rect x="80" y="360" width="320" height="170" rx="10" fill="#438dd5" stroke="#0b3c6e" stroke-width="2"/>
+<text x="240.0" y="392" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Control-room console</text>
+<text x="240.0" y="413" font-size="13" fill="#e8f0fb" text-anchor="middle">[Container: React, TypeScript]</text>
+<text x="240.0" y="438.0" font-size="13" fill="#fff" text-anchor="middle">Every view, live venue map, charts;</text>
+<text x="240.0" y="454.9" font-size="13" fill="#fff" text-anchor="middle">English and Arabic. Runs in the browser.</text>
+<rect x="450" y="360" width="670" height="170" rx="10" fill="#438dd5" stroke="#0b3c6e" stroke-width="2"/>
+<text x="785.0" y="392" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Scout, help and classic pages</text>
+<text x="785.0" y="413" font-size="13" fill="#e8f0fb" text-anchor="middle">[Container: HTML, JavaScript]</text>
+<text x="785.0" y="438.0" font-size="13" fill="#fff" text-anchor="middle">Scout phone page (/scout), visitor help page (/help), classic console (/legacy), plain</text>
+<text x="785.0" y="454.9" font-size="13" fill="#fff" text-anchor="middle">dashboard (/classic). Served by the server.</text>
+<rect x="1290" y="360" width="320" height="170" rx="10" fill="#438dd5" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1450.0" y="392" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Desktop console</text>
+<text x="1450.0" y="413" font-size="13" fill="#e8f0fb" text-anchor="middle">[Container: Java 17, JavaFX]</text>
+<text x="1450.0" y="438.0" font-size="13" fill="#fff" text-anchor="middle">Control room on one computer; runs the</text>
+<text x="1450.0" y="454.9" font-size="13" fill="#fff" text-anchor="middle">core itself.</text>
+<rect x="450" y="640" width="670" height="260" rx="10" fill="#438dd5" stroke="#0b3c6e" stroke-width="2"/>
+<text x="785.0" y="672" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CrowdWatch server</text>
+<text x="785.0" y="693" font-size="13" fill="#e8f0fb" text-anchor="middle">[Container: Java 17, Spring Boot, Spring Security, Tomcat]</text>
+<text x="785.0" y="718.0" font-size="13" fill="#fff" text-anchor="middle">Spring Security checks every request; Spring controllers for reads and changes; live</text>
+<text x="785.0" y="734.9" font-size="13" fill="#fff" text-anchor="middle">updates over a WebSocket. The core (CrowdMonitor, rules, automation), sensor feeds,</text>
+<text x="785.0" y="751.8" font-size="13" fill="#fff" text-anchor="middle">watchdog and saving run inside it. Alternative: the built-in JDK server of</text>
+<text x="785.0" y="768.7" font-size="13" fill="#fff" text-anchor="middle">CrowdWatch.jar, same rules.</text>
+<rect x="70" y="680" width="290" height="200" rx="10" fill="#438dd5" stroke="#0b3c6e" stroke-width="2"/>
+<text x="215.0" y="712" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Data folder</text>
+<text x="215.0" y="733" font-size="13" fill="#e8f0fb" text-anchor="middle">[Container: files (crowdwatch-data)]</text>
+<text x="215.0" y="758.0" font-size="13" fill="#fff" text-anchor="middle">Accounts (hashes), data key, daily</text>
+<text x="215.0" y="774.9" font-size="13" fill="#fff" text-anchor="middle">backups, audit and log files,</text>
+<text x="215.0" y="791.8" font-size="13" fill="#fff" text-anchor="middle">photos, handover reports,</text>
+<text x="215.0" y="808.7" font-size="13" fill="#fff" text-anchor="middle">certificate.</text>
+<path d="M1290,668 v204 a160.0,18 0 0,0 320,0 v-204 a160.0,18 0 0,0 -320,0 z" fill="#438dd5" stroke="#2e6295" stroke-width="2"/>
+<ellipse cx="1450.0" cy="668" rx="160.0" ry="18" fill="#438dd5" stroke="#2e6295" stroke-width="2"/>
+<text x="1450.0" y="708" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Venue database</text>
+<text x="1450.0" y="729" font-size="13" fill="#e8f0fb" text-anchor="middle">[Container: Apache Derby, embedded]</text>
+<text x="1450.0" y="754.0" font-size="13" fill="#fff" text-anchor="middle">In the server&#x27;s process. Saved 10 s</text>
+<text x="1450.0" y="770.9" font-size="13" fill="#fff" text-anchor="middle">after a change and every 60 s. Personal</text>
+<text x="1450.0" y="787.8" font-size="13" fill="#fff" text-anchor="middle">data encrypted.</text>
+<rect x="80" y="1020" width="420" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="290.0" y="1052" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Counting systems</text>
+<text x="290.0" y="1073" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="290.0" y="1098.0" font-size="13" fill="#fff" text-anchor="middle">Turnstiles, door counters, cameras</text>
+<rect x="630" y="1020" width="420" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="840.0" y="1052" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Radio / SMS gateway</text>
+<text x="840.0" y="1073" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="840.0" y="1098.0" font-size="13" fill="#fff" text-anchor="middle">Unit messages, public screens and PA</text>
+<rect x="1180" y="1020" width="420" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1390.0" y="1052" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Alerts, directory, monitoring</text>
+<text x="1390.0" y="1073" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="1390.0" y="1098.0" font-size="13" fill="#fff" text-anchor="middle">SMS or e-mail service, LDAP, Prometheus</text>
+<line x1="240" y1="230" x2="240" y2="360" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="202" y="280" width="77" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="240.0" y="295.0" font-size="13" fill="#333" text-anchor="middle">Uses</text>
+<text x="240.0" y="310.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[browser]</text>
+<line x1="655" y1="230" x2="734" y2="360" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="634" y="280" width="120" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="694.4827586206897" y="295.0" font-size="13" fill="#333" text-anchor="middle">Uses /scout</text>
+<text x="694.4827586206897" y="310.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[phone browser]</text>
+<line x1="915" y1="230" x2="836" y2="360" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="816" y="280" width="120" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="875.5172413793103" y="295.0" font-size="13" fill="#333" text-anchor="middle">Uses /help</text>
+<text x="875.5172413793103" y="310.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[phone browser]</text>
+<line x1="1450" y1="230" x2="1450" y2="360" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1390" y="280" width="120" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1450.0" y="295.0" font-size="13" fill="#333" text-anchor="middle">Uses</text>
+<text x="1450.0" y="310.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[JavaFX window]</text>
+<line x1="383" y1="530" x2="567" y2="640" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="327" y="570" width="235" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="444.7692307692308" y="585.0" font-size="13" fill="#333" text-anchor="middle">Reads and changes; live updates</text>
+<text x="444.7692307692308" y="600.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS JSON, WebSocket]</text>
+<line x1="785" y1="530" x2="785" y2="640" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="808" y="570" width="134" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="875.0" y="585.0" font-size="13" fill="#333" text-anchor="middle">Reads and changes</text>
+<text x="875.0" y="600.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS JSON]</text>
+<line x1="450" y1="776" x2="360" y2="777" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="374" y="762" width="62" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="405.0" y="776.6666666666666" font-size="13" fill="#333" text-anchor="middle">Writes</text>
+<text x="405.0" y="791.6666666666666" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[files]</text>
+<line x1="1120" y1="770" x2="1290" y2="770" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1156" y="755" width="98" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1205.0" y="770.0" font-size="13" fill="#333" text-anchor="middle">Saves, loads</text>
+<text x="1205.0" y="785.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[JDBC]</text>
+<line x1="1450" y1="530" x2="1450" y2="650" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1470" y="575" width="120" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1530.0" y="590.0" font-size="13" fill="#333" text-anchor="middle">Saves and loads</text>
+<text x="1530.0" y="605.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[JDBC]</text>
+<line x1="398" y1="1020" x2="584" y2="900" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="380" y="945" width="142" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="451.09375" y="960.0" font-size="13" fill="#333" text-anchor="middle">Count lines</text>
+<text x="451.09375" y="975.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[file, HTTPS, TCP]</text>
+<line x1="807" y1="900" x2="828" y2="1020" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="695" y="945" width="106" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="747.65625" y="960.0" font-size="13" fill="#333" text-anchor="middle">Unit messages</text>
+<text x="747.65625" y="975.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS JSON]</text>
+<line x1="1031" y1="900" x2="1258" y2="1020" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1092" y="945" width="185" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1184.21875" y="960.0" font-size="13" fill="#333" text-anchor="middle">Alerts, sign-in, metrics</text>
+<text x="1184.21875" y="975.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS, LDAPS]</text>
+<text x="850" y="1200.0" font-size="13" fill="#444" text-anchor="middle">Only one program opens a venue&#x27;s database at a time: the server or the desktop console. Level 3 (components of the server): the web-layer diagram. Level 4 (code): the class diagram of the core.</text></svg>

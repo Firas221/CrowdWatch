@@ -1,0 +1,40 @@
+CrowdWatch 3.0 - Spring Boot server and React console tests
+============================================================
+
+crowdwatch.spring.CrowdWatchServerTest: 8 tests, 0 failures, 0 errors
+  PASS  changesAndRulesWork
+  PASS  consoleReadsBehaveAsBefore
+  PASS  apiAnswersThroughSpring
+  PASS  webSocketNeedsSignIn
+  PASS  publicPagesAndLegacyConsole
+  PASS  keyIsStillRequired
+  PASS  webSocketPushesChanges
+  PASS  consoleReadsAreSpringEndpoints
+
+crowdwatch.spring.SecurityTest: 13 tests, 0 failures, 0 errors
+  PASS  changesAreAuditedWithTheUsersOwnName
+  PASS  manyRequestsWithoutTheKeyAreSlowedDown
+  PASS  liveSocketTakesASessionToken
+  PASS  securityHeaders
+  PASS  signInIsNeeded
+  PASS  deviceCodesOnlyDoWhatAPhoneNeeds
+  PASS  plainDashboardFormsAreSentBack
+  PASS  badInputAndRules
+  PASS  rolesAreEnforced
+  PASS  refusedChangesAreAudited
+  PASS  keyInAFormBodyStillWorks
+  PASS  aDeviceActsOnlyOnItsOwnTasks
+  PASS  everyControlRoomChangeIsASpringEndpoint
+
+React console (Vitest): src/api/client.test.ts: 5 tests - 5 passed (5)
+  sign-in storage shared with the classic console; roles (control key counts as ADMIN); sign-in headers;
+  the WebSocket address over wss for https; form posts with the officer name; 401 signs out
+
+TOTAL Spring: 21 tests
+
+Browser checks (Playwright, against the built jar; run by hand for each change of this version):
+  control key: sign-in, every view, a change made elsewhere shown in about 0.8 s, report incident, Arabic (rtl),
+  light theme, phone width without sideways scrolling; administrator: lost person reported and found,
+  evacuation preview with 12 routes on the map, SOS, messages, reports, replay, editor drag, audit log,
+  device code, personal-data search, two-step set-up; operator: no reports or editor, no Start evacuation,
+  can raise an alarm; classic console still served; no errors in the browser.
