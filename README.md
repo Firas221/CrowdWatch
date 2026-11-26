@@ -53,7 +53,7 @@ Then open `http://<this-computer>:8080/` in any browser. On Windows, use the `.b
 | Desktop console | `source/src/crowdwatch/fx` | JavaFX |
 | Database | `source/src/crowdwatch/db` | Apache Derby |
 
-Spring Security checks who is calling and their role before any CrowdWatch code runs. Spring controllers then serve the console's reads and the control-room changes, using the same rules, audit log and data code as the core. See [the web-layer diagram](docs/CrowdWatch_Web-Layer.png).
+Spring Security checks who is calling and their role before any CrowdWatch code runs. Spring controllers then serve the console's reads and the control-room changes, using the same rules, audit log and data code as the core. See the C4 diagrams: [landscape (level 0)](docs/diagrams/c4-level0-landscape.png), [context (level 1)](docs/diagrams/c4-level1-context.png), [containers (level 2)](docs/diagrams/c4-level2-containers.png), [server components (level 3)](docs/CrowdWatch_Web-Layer.png); and the use cases per venue in chapter 5 of the guide.
 
 ## Folders
 
@@ -62,12 +62,12 @@ Spring Security checks who is calling and their role before any CrowdWatch code 
 | `program/` | Ready-to-run jars, run scripts, service installers, JavaFX |
 | `source/` | The core's Java source and the Derby libraries |
 | `server/`, `web/` | The Spring Boot server and the React console |
-| `docs/` | Design and Integration Guide (PDF and Word), diagrams, the guide's generator in `docs/source` |
+| `docs/` | Design and Integration Guide (PDF and Word); C4 diagrams (levels 0 to 2), use-case diagrams per venue and the web-layer and class diagrams in `docs/diagrams` and `docs/`; the generators in `docs/source` |
 | `examples/` | Template venue file explaining every line, its drawing, sample counts, a drill script |
 | `test-evidence/` | Test output and the load tests |
 | `screenshots/` | The consoles, the scout phone and the help page |
 
-The full documentation is [the Design and Integration Guide](docs/CrowdWatch_Design-and-Integration-Guide.pdf). It covers set-up, venue files, the consoles, automation, security, data and backups, the API, running a venue, the tests, and the known limitations. `README.txt` is a short plain-text version of this page for the release zip.
+The full documentation is [the Design and Integration Guide](docs/CrowdWatch_Design-and-Integration-Guide.pdf). It covers set-up, the architecture (C4 levels 0 to 4), use cases for each venue, venue files, the consoles, automation, security, data and backups, the API, running a venue, the tests, and the known limitations. `README.txt` is a short plain-text version of this page for the release zip.
 
 ## Licence
 

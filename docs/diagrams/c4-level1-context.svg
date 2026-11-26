@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1250" viewBox="0 0 1700 1250" font-family="DejaVu Sans, Arial, sans-serif"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker></defs><rect width="1700" height="1250" fill="#fff"/><text x="24" y="40" font-size="26" fill="#1f2937" text-anchor="start" font-weight="700">C4 level 1 - System context: CrowdWatch at one venue</text>
+<circle cx="185.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="40" y="96" width="290" height="154" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="185.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Control-room operator</text>
+<text x="185.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="185.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">Watches the crowd, enters counts,</text>
+<text x="185.0" y="192.9" font-size="13" fill="#fff" text-anchor="middle">reports and follows incidents</text>
+<circle cx="515.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="370" y="96" width="290" height="154" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="515.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Security officer</text>
+<text x="515.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="515.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">On watch: decisions, reviews,</text>
+<text x="515.0" y="192.9" font-size="13" fill="#fff" text-anchor="middle">evacuation, public messages</text>
+<circle cx="845.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="700" y="96" width="290" height="154" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="845.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Administrator</text>
+<text x="845.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="845.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">Users, venue file, personal-data</text>
+<text x="845.0" y="192.9" font-size="13" fill="#fff" text-anchor="middle">requests</text>
+<circle cx="1175.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="1030" y="96" width="290" height="154" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="1175.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Response unit (scout)</text>
+<text x="1175.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="1175.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">Receives tasks on a phone or radio;</text>
+<text x="1175.0" y="192.9" font-size="13" fill="#fff" text-anchor="middle">acknowledges, reports, SOS</text>
+<circle cx="1505.0" cy="76" r="30" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<rect x="1360" y="96" width="290" height="154" rx="28" fill="#08427b" stroke="#062e56" stroke-width="2"/>
+<text x="1505.0" y="130" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Visitor</text>
+<text x="1505.0" y="151" font-size="13" fill="#e8f0fb" text-anchor="middle">[Person]</text>
+<text x="1505.0" y="176.0" font-size="13" fill="#fff" text-anchor="middle">Asks for help with the help page (QR</text>
+<text x="1505.0" y="192.9" font-size="13" fill="#fff" text-anchor="middle">code)</text>
+<rect x="560" y="470" width="580" height="210" rx="10" fill="#1168bd" stroke="#0b3c6e" stroke-width="2"/>
+<text x="850.0" y="502" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CrowdWatch</text>
+<text x="850.0" y="523" font-size="13" fill="#e8f0fb" text-anchor="middle">[Software system]</text>
+<text x="850.0" y="548.0" font-size="13" fill="#fff" text-anchor="middle">Keeps live counts per area, works out crowd levels, sends the nearest</text>
+<text x="850.0" y="564.9" font-size="13" fill="#fff" text-anchor="middle">suitable unit, runs the automation, SOS, evacuation and lost-person</text>
+<text x="850.0" y="581.8" font-size="13" fill="#fff" text-anchor="middle">procedures, and records everything.</text>
+<rect x="40" y="470" width="300" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="190.0" y="502" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Counting systems</text>
+<text x="190.0" y="523" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="190.0" y="548.0" font-size="13" fill="#fff" text-anchor="middle">Turnstiles, door counters, CCTV head</text>
+<text x="190.0" y="564.9" font-size="13" fill="#fff" text-anchor="middle">counts, ticket gates</text>
+<rect x="40" y="700" width="300" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="190.0" y="732" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Fire alarm panel</text>
+<text x="190.0" y="753" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="190.0" y="778.0" font-size="13" fill="#fff" text-anchor="middle">Alarms (directly or entered by the</text>
+<text x="190.0" y="794.9" font-size="13" fill="#fff" text-anchor="middle">control room)</text>
+<rect x="40" y="930" width="300" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="190.0" y="962" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Weather station</text>
+<text x="190.0" y="983" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="190.0" y="1008.0" font-size="13" fill="#fff" text-anchor="middle">Temperature and humidity for heat</text>
+<text x="190.0" y="1024.9" font-size="13" fill="#fff" text-anchor="middle">stress</text>
+<rect x="1360" y="470" width="300" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1510.0" y="502" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Radio / SMS gateway</text>
+<text x="1510.0" y="523" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="1510.0" y="548.0" font-size="13" fill="#fff" text-anchor="middle">Delivers unit messages to radios;</text>
+<text x="1510.0" y="564.9" font-size="13" fill="#fff" text-anchor="middle">public screens and PA</text>
+<rect x="1360" y="700" width="300" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1510.0" y="732" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Alert service</text>
+<text x="1510.0" y="753" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="1510.0" y="778.0" font-size="13" fill="#fff" text-anchor="middle">SMS, WhatsApp or e-mail to the duty</text>
+<text x="1510.0" y="794.9" font-size="13" fill="#fff" text-anchor="middle">officer&#x27;s phone</text>
+<rect x="1360" y="930" width="300" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1510.0" y="962" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Company directory</text>
+<text x="1510.0" y="983" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="1510.0" y="1008.0" font-size="13" fill="#fff" text-anchor="middle">LDAP / Active Directory</text>
+<rect x="440" y="960" width="280" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="580.0" y="992" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Monitoring</text>
+<text x="580.0" y="1013" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="580.0" y="1038.0" font-size="13" fill="#fff" text-anchor="middle">Prometheus, health checks</text>
+<rect x="750" y="960" width="280" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="890.0" y="992" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">Other CrowdWatch sites</text>
+<text x="890.0" y="1013" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="890.0" y="1038.0" font-size="13" fill="#fff" text-anchor="middle">Head-office Sites view</text>
+<rect x="1060" y="960" width="280" height="140" rx="10" fill="#8a8a8a" stroke="#0b3c6e" stroke-width="2"/>
+<text x="1200.0" y="992" font-size="18" fill="#fff" text-anchor="middle" font-weight="700">CCTV</text>
+<text x="1200.0" y="1013" font-size="13" fill="#e8f0fb" text-anchor="middle">[External system]</text>
+<text x="1200.0" y="1038.0" font-size="13" fill="#fff" text-anchor="middle">Camera views per area</text>
+<line x1="323" y1="250" x2="680" y2="470" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="349" y="345" width="185" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="441.2804878048781" y="360.0" font-size="13" fill="#333" text-anchor="middle">Watches, enters, reports</text>
+<text x="441.2804878048781" y="375.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[browser, HTTPS]</text>
+<line x1="584" y1="250" x2="764" y2="470" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="584" y="345" width="142" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="654.329268292683" y="360.0" font-size="13" fill="#333" text-anchor="middle">Decides, checks in</text>
+<text x="654.329268292683" y="375.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[browser, HTTPS]</text>
+<line x1="846" y1="250" x2="849" y2="470" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="784" y="315" width="127" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="847.3780487804878" y="330.0" font-size="13" fill="#333" text-anchor="middle">Manages</text>
+<text x="847.3780487804878" y="345.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[browser, HTTPS]</text>
+<line x1="1108" y1="250" x2="933" y2="470" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="940" y="345" width="221" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1050.4268292682927" y="360.0" font-size="13" fill="#333" text-anchor="middle">Gets tasks, acknowledges, SOS</text>
+<text x="1050.4268292682927" y="375.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[phone, HTTPS]</text>
+<line x1="1369" y1="250" x2="1018" y2="470" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1193" y="345" width="142" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1263.4756097560976" y="360.0" font-size="13" fill="#333" text-anchor="middle">Reports a need</text>
+<text x="1263.4756097560976" y="375.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[help page, HTTPS]</text>
+<line x1="340" y1="548" x2="560" y2="560" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="368" y="539" width="163" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="450.0" y="553.7878787878788" font-size="13" fill="#333" text-anchor="middle">Send counts and moves</text>
+<text x="450.0" y="568.7878787878788" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[folder, HTTPS, TCP]</text>
+<line x1="340" y1="726" x2="560" y2="661" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="397" y="678" width="106" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="450.0" y="693.1818181818182" font-size="13" fill="#333" text-anchor="middle">Raises alarms</text>
+<text x="450.0" y="708.1818181818182" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS]</text>
+<line x1="299" y1="930" x2="687" y2="680" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="448" y="790" width="149" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="522.8235294117648" y="805.0" font-size="13" fill="#333" text-anchor="middle">Sends weather</text>
+<text x="522.8235294117648" y="820.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[count line, HTTPS]</text>
+<line x1="1140" y1="560" x2="1360" y2="548" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1176" y="539" width="149" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1250.0" y="553.7878787878788" font-size="13" fill="#333" text-anchor="middle">Sends unit messages</text>
+<text x="1250.0" y="568.7878787878788" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS JSON]</text>
+<line x1="1140" y1="661" x2="1360" y2="726" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1176" y="678" width="149" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1250.0" y="693.1818181818182" font-size="13" fill="#333" text-anchor="middle">Sends urgent alerts</text>
+<text x="1250.0" y="708.1818181818182" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS JSON]</text>
+<line x1="1013" y1="680" x2="1401" y2="930" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="1114" y="790" width="127" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1177.1764705882351" y="805.0" font-size="13" fill="#333" text-anchor="middle">Checks passwords</text>
+<text x="1177.1764705882351" y="820.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[LDAPS]</text>
+<line x1="622" y1="960" x2="788" y2="680" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="603" y="805" width="163" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="684.6153846153846" y="820.0" font-size="13" fill="#333" text-anchor="middle">Reads health, metrics</text>
+<text x="684.6153846153846" y="835.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS]</text>
+<line x1="884" y1="960" x2="859" y2="680" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="801" y="805" width="142" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="871.5384615384615" y="820.0" font-size="13" fill="#333" text-anchor="middle">Reads the overview</text>
+<text x="871.5384615384615" y="835.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[HTTPS, key]</text>
+<line x1="931" y1="680" x2="1146" y2="960" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5" marker-end="url(#arr)"/>
+<rect x="988" y="805" width="142" height="34" fill="#fff" fill-opacity="0.92"/>
+<text x="1058.4615384615386" y="820.0" font-size="13" fill="#333" text-anchor="middle">Links camera views</text>
+<text x="1058.4615384615386" y="835.0" font-size="12" fill="#666" text-anchor="middle" font-style="italic">[URL]</text>
+<text x="850" y="1170.0" font-size="13" fill="#444" text-anchor="middle">CrowdWatch does not call the emergency services, sound alarms or open doors: the control room does, following the venue&#x27;s emergency plan.</text></svg>

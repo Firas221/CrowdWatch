@@ -1,0 +1,105 @@
+{
+  "actors": {
+    "OP": "Control-room operator",
+    "OF": "Security officer",
+    "AD": "Administrator",
+    "UN": "Response unit",
+    "VI": "Visitor",
+    "SE": "Counting system",
+    "FA": "Fire alarm panel",
+    "CL": "Clock (schedule)"
+  },
+  "left": ["OP", "OF", "AD"],
+  "venues": [
+    {
+      "key": "general",
+      "title": "All venues",
+      "intro": "The use cases every venue has. The venue sections below show how each venue uses them, with its own areas, categories, units and peaks.",
+      "names": { "UN": "Response unit", "VI": "Visitor" },
+      "cases": [
+        ["G1", "Sign in and check in", ["OP", "OF"], "A person signs in with name and password (and two-step code); an officer is checked in as the security officer and must check in again every 15 minutes, or a SUPERVISION alarm is raised."],
+        ["G2", "Monitor the crowd", ["OP", "SE"], "Counting systems send counts and moves; levels are worked out from capacity (and density); the console shows the venue map, levels, trends and warnings, and changes appear at once on every screen."],
+        ["G3", "Report an incident", ["OP", "VI"], "An operator reports, or a visitor uses the help page; the nearest available unit with the right skill and language is sent, or the incident waits in its priority queue."],
+        ["G4", "Carry out a task", ["UN"], "The unit's phone shows the task with the route; the unit acknowledges, reports on scene and resolves; without an answer the task is reminded and then passed on."],
+        ["G5", "Send an SOS", ["UN", "OP"], "A CRITICAL incident; the nearest free unit goes, units within 5 minutes are alerted, a lower-priority task may be interrupted."],
+        ["G6", "Find a lost person", ["OP", "UN", "VI"], "A lookout goes to every unit, the search area widens, exits check people leaving; Found stops it and the person is brought to the meeting point."],
+        ["G7", "Review automatic dispatch", ["OF"], "When an area turns HIGH (or is about to turn CRITICAL) a unit is sent automatically; the officer approves it or rejects it as a false alarm."],
+        ["G8", "Evacuate a zone", ["OF", "FA"], "An alarm or a long CRITICAL proposes an evacuation; the officer previews the plan and starts it; every unit is told which exit to use; the officer ends it."],
+        ["G9", "Approve public messages", ["OF"], "Drafted messages for screens and PA reach the public only after an officer approves them."],
+        ["G10", "Prepare for a peak", ["CL"], "Before a scheduled peak, levels start earlier and free units are placed; at shift changes a handover report is written."],
+        ["G11", "Review a period", ["OF"], "Reports (busiest areas, response times) and replay of any day minute by minute."],
+        ["G12", "Manage users and the venue", ["AD"], "Users and roles, the venue editor, personal-data requests."]
+      ]
+    },
+    {
+      "key": "airport",
+      "title": "Airport",
+      "venueFile": "airport.venue",
+      "intro": "Sample International Airport: two terminals, security screening, passport control, gates, baggage claim and a rail station (16 areas, 8 units). Levels from 60, 80 and 95 %. Automatic dispatch of crowd control at HIGH or on a trend warning. Peaks: the morning check-in at 06:30 and the evening departure bank at 18:00. Shifts at 06:00, 14:00 and 22:00.",
+      "names": { "UN": "Airport unit", "VI": "Passenger" },
+      "cases": [
+        ["A1", "Keep security-screening queues moving", ["OP", "SE"], "Lane and door counters report SEC-1 and SEC-2; a TREND warning comes up to 10 minutes before CRITICAL; at HIGH a crowd-control unit (A01, A02, A05 or A06) is sent automatically and the units in CHECKIN-1 are told to hold the flow."],
+        ["A2", "Prepare for the evening departure bank", ["CL", "OF"], "From 17:30 the levels of Airside T1 start 10 points earlier and free units are placed at the gates; the officer watches GATE-A and GATE-B."],
+        ["A3", "Deal with an unattended bag", ["OP", "UN"], "A SECURITY incident (CRITICAL) goes to the nearest security unit (A02 or A07); moving a unit onto the restricted apron needs an officer's approval."],
+        ["A4", "Assist a passenger with reduced mobility", ["VI", "OP", "UN"], "A PRM request (NORMAL) goes to a wheelchair unit (A04 or A08); the passenger's details are erased when it is resolved."],
+        ["A5", "Reunite a separated passenger", ["VI", "OP", "UN"], "A LOST_PERSON report sends a lookout to every unit; units at CURB-1, CURB-2 and TRAIN check people leaving; the person is brought to ARRIVALS-1."],
+        ["A6", "Respond to a medical emergency", ["UN", "OP"], "A MEDICAL incident (CRITICAL) goes to A03 or A08; a unit on the spot can press SOS."],
+        ["A7", "Evacuate a terminal fire zone", ["FA", "OF"], "A fire alarm in T1 Landside proposes evacuating that zone; the officer previews the plan (exits CURB-1, CURB-2, TRAIN, with the time to clear) and starts it."],
+        ["A8", "Count passengers without counting them twice", ["SE", "OF"], "Door counters between zones send moves; the curb and rail entrances move people from and to OUTSIDE; the count check alerts when the zones and the gates disagree."],
+        ["A9", "Hand over at a shift change", ["CL", "OF"], "At 06:00, 14:00 and 22:00 a handover report lists open incidents, lost persons and the situation."]
+      ]
+    },
+    {
+      "key": "stadium",
+      "title": "Stadium",
+      "venueFile": "stadium.venue",
+      "intro": "Sample National Stadium: four stands, concourses, turnstiles, plazas and a metro station (14 areas, 6 units). Levels from 55, 80 and 95 %. Automatic dispatch at crowd pressure (CRUSH) at HIGH or on a trend warning. Peaks: gates open at 19:00, full time at 21:00. Shifts at 15:00 and 23:00.",
+      "names": { "UN": "Steward team", "VI": "Fan" },
+      "cases": [
+        ["S1", "Manage the turnstiles before kick-off", ["CL", "SE", "OP"], "From 18:30 the outer ring's levels start earlier and stewards are placed; turnstile counters report the queues and the units at the turnstiles hold the flow when a concourse turns HIGH."],
+        ["S2", "Prevent a crush at a barrier", ["SE", "OF"], "A CRUSH incident is raised automatically at HIGH or on a trend; the area is brought up to 2 units at HIGH and 4 at CRITICAL; the officer reviews the dispatch."],
+        ["S3", "Stop a fight in the stands", ["OP", "UN"], "A FIGHT incident (CRITICAL) goes to the security units (S03 police liaison, stewards with security)."],
+        ["S4", "Find a lost child", ["VI", "OP", "UN"], "A LOST_CHILD report (CRITICAL) sends a lookout to every steward; the turnstiles and plazas check children leaving; the child is brought to PLAZA-S."],
+        ["S5", "Help a fan who collapsed", ["UN", "OP"], "A MEDICAL incident goes to the nearest medical post (S04 east, S05 west); stewards nearby are alerted as backup."],
+        ["S6", "Assist a fan with access needs", ["VI", "UN"], "An ACCESS request goes to the access team (S06)."],
+        ["S7", "Empty the stadium at full time", ["CL", "OF"], "From 20:30 the outer ring is prepared; exit flows of PLAZA-N, PLAZA-S and METRO spread the crowd; the turnstiles are the bottleneck."],
+        ["S8", "Evacuate a stand", ["FA", "OF"], "An alarm proposes evacuating the stand's zone (North, South, East or West); the plan shows each group's exit and the time until the zone is clear."],
+        ["S9", "Report a facility fault", ["OP"], "A FACILITY incident (LOW: lift, toilet, light) goes to any free unit."]
+      ]
+    },
+    {
+      "key": "umrah",
+      "title": "Holy Mosques (Umrah)",
+      "venueFile": "umrah.venue",
+      "intro": "Masjid al-Haram in Makkah and al-Masjid an-Nabawi in Madinah: the Mataf and its upper level, the Mas'a, the expansions, gates, courtyards and plazas (26 areas, 12 scout teams). Levels from 50, 75 and 90 %, and from people per square metre in the dense areas. Peaks at Dhuhr (12:15) and Maghrib and Isha (18:00). The two cities are not linked, so a team is never sent from one to the other.",
+      "names": { "UN": "Scout team", "VI": "Pilgrim" },
+      "cases": [
+        ["U1", "Watch the density of the Mataf and the Mas'a", ["SE", "OP"], "Head counts and density estimates report the Mataf, its upper level and the Mas'a; the level follows people per square metre (HIGH from 4); the venue map shows the Holy Mosques live."],
+        ["U2", "Control the flow at prayer times", ["CL", "OF"], "Before Dhuhr and Maghrib the levels of Makkah (and Madinah at Dhuhr) start earlier, teams are placed at the gates, and the teams next to a HIGH area hold the flow."],
+        ["U3", "Find a lost pilgrim", ["VI", "OP", "UN"], "A lost-pilgrim report sends a lookout to every team of that city; a team speaking the pilgrim's language (Urdu, Indonesian, Turkish, ...) is preferred; the pilgrim is brought to KA-GATE in Makkah or SALAM in Madinah."],
+        ["U4", "Help an elderly pilgrim", ["VI", "UN"], "An ELDERLY request (HIGH) goes to a team with wheelchairs (T01, T03, T08, T12)."],
+        ["U5", "Respond to severe tiredness", ["UN", "OP"], "A MEDICAL incident (CRITICAL) goes to a first-aid team (T05, T08, T14); a team can press SOS."],
+        ["U6", "Relieve crowd pressure", ["SE", "OF"], "A CROWD incident is raised at HIGH or on a trend; the area is reinforced and the flow held at the gates; the officer reviews it."],
+        ["U7", "Evacuate the Mataf fire zone", ["FA", "OF"], "The plan spreads the Mataf crowd over several exits (plazas and yards) and estimates the time to clear; only Makkah is planned."],
+        ["U8", "Warn of heat stress in the courtyards", ["SE", "OF"], "A weather reading gives the heat index; when the band changes an alert names the outdoor courtyards and plazas and what teams should do."],
+        ["U9", "Ask for help without an app", ["VI"], "A QR code in the area opens the help page in Arabic or English; the report becomes an incident at that area."]
+      ]
+    },
+    {
+      "key": "mall",
+      "title": "Mall (the template venue)",
+      "venueFile": "examples/template.venue",
+      "intro": "City Centre Mall, the template venue: entrances, an atrium, a food court on level 1 and a cinema on level 2, joined by stairs and a lift (7 areas, 3 units). Levels from 50, 75 and 90 %. Peak at lunchtime (13:00). Shifts at 08:00 and 16:00.",
+      "names": { "UN": "Guard or host", "VI": "Shopper" },
+      "cases": [
+        ["M1", "Watch the lunchtime peak", ["CL", "SE", "OP"], "From 12:30 the atrium's levels start earlier and units are placed; the food court and atrium counts are watched."],
+        ["M2", "Find a lost child", ["VI", "OP", "UN"], "A LOST_CHILD report sends a lookout; ENT-N, ENT-S and the car park check children leaving; the child is brought to the atrium."],
+        ["M3", "Handle theft or disorder", ["OP", "UN"], "A SECURITY incident (HIGH) goes to guard G1."],
+        ["M4", "Respond to a medical case", ["UN", "OP"], "A MEDICAL incident goes to G2 (first aid)."],
+        ["M5", "Clean a spill", ["OP"], "A CLEANING incident (LOW) goes to any free unit, such as the host desk."],
+        ["M6", "Evacuate a floor", ["FA", "OF"], "An alarm proposes evacuating its floor's zone; the plan uses the stairs, never the lift."],
+        ["M7", "Count shoppers at the entrances", ["SE", "OF"], "Entrance counters move people from and to OUTSIDE; the count check compares the floors with the entrances."]
+      ]
+    }
+  ]
+}

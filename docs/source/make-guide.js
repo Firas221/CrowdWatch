@@ -125,11 +125,11 @@ table(['Item', 'Details'], [
 
 H1('Contents');
 [
-  '1  What CrowdWatch is', '2  How the original Umra Tech requirements are met', '3  Quick start', '4  Architecture',
-  '5  Data structures', '6  Rules', '7  Venue files', '8  The control-room console', '9  The desktop console',
-  '10  Scout phones, radio and the visitor help page', '11  Automation and the emergency plan', '12  Security',
-  '13  Data, saving and backups', '14  Integrating real systems', '15  Running a venue', '16  Building and testing',
-  '17  Weak points removed', '18  Known limitations and future work',
+  '1  What CrowdWatch is', '2  How the original Umra Tech requirements are met', '3  Quick start', '4  Architecture', '5  Use cases',
+  '6  Data structures', '7  Rules', '8  Venue files', '9  The control-room console', '10  The desktop console',
+  '11  Scout phones, radio and the visitor help page', '12  Automation and the emergency plan', '13  Security',
+  '14  Data, saving and backups', '15  Integrating real systems', '16  Running a venue', '17  Building and testing',
+  '18  Weak points removed', '19  Known limitations and future work',
 ].forEach((t) => add(new Paragraph({ children: [new TextRun({ text: t, size: 24 })], spacing: { after: 100 } })));
 
 // =====================================================================================
@@ -165,7 +165,7 @@ table(['Umra Tech requirement', 'How CrowdWatch meets it', 'Evidence'], [
   ['Monitor the crowd level at each gate and courtyard', 'Each gate or courtyard is an area in umrah.venue. Staff can still record LOW to CRITICAL by hand, or a sensor count sets the level automatically.', 'TC-11, TC-32'],
   ['Two sites: Makkah and Madinah', 'Two sectors in one venue file. They are not linked, so a team in Makkah is never sent to Madinah.', 'TC-34'],
   ['Scout teams with languages', 'Units with languages and skills (T01 to T16). A team that speaks the reporter\'s language is preferred.', 'TC-33'],
-  ['Lost-person cases', 'Category LOST_PERSON (CRITICAL, skill lost-person, personal data erased when resolved), with a lookout to every unit (section 11.7).', 'TC-12, TC-21, TC-92 to TC-96'],
+  ['Lost-person cases', 'Category LOST_PERSON (CRITICAL, skill lost-person, personal data erased when resolved), with a lookout to every unit (section 12.7).', 'TC-12, TC-21, TC-92 to TC-96'],
   ['Assistance requests (wheelchair, elderly, medical)', 'Categories MEDICAL, ELDERLY, WHEELCHAIR and DIRECTIONS, each with its own priority and skill.', 'TC-13, TC-16'],
   ['Send the nearest suitable team', 'Shortest walking time (Dijkstra) over the area graph instead of the difference of position numbers.', 'TC-09, TC-12, TC-13'],
   ['Waiting queues when no team is free', 'Four first-in-first-out queues by priority; escalation moves a case up.', 'TC-16, TC-18, TC-22'],
@@ -194,11 +194,11 @@ H2('3.3  Run');
 table(['What', 'How'], [
   ['Control-room server', '`program/run-server.bat [venue] [port] [control-key] [scout-key]` (or `run-server.sh`), then open `http://<this-computer>:8080/` in any browser. Venue: airport, stadium, umrah or a .venue file.'],
   ['Users', '`program/add-user.bat <name> <OPERATOR|OFFICER|ADMIN>` (or `add-user.sh`). The first user should be an ADMIN.'],
-  ['HTTPS', 'Set `CROWDWATCH_HTTPS=1` before `run-server` (section 12.7).'],
-  ['Desktop console', '`program/run.bat` (or `run.sh`): choose a venue (section 9).'],
-  ['Scout phones', '`http://<server>:8080/scout` with the unit\'s device code (section 10).'],
-  ['Training drill', '`program/run-drill.bat airport 8081 ..\\examples\\airport-fire.drill` (section 15.3).'],
-  ['As a service', 'Fill in `program/service.conf`, then `install-service-windows.bat` (as administrator), `sudo ./install-service-linux.sh` or `sudo ./install-service-mac.sh` (section 15.1).'],
+  ['HTTPS', 'Set `CROWDWATCH_HTTPS=1` before `run-server` (section 13.7).'],
+  ['Desktop console', '`program/run.bat` (or `run.sh`): choose a venue (section 10).'],
+  ['Scout phones', '`http://<server>:8080/scout` with the unit\'s device code (section 11).'],
+  ['Training drill', '`program/run-drill.bat airport 8081 ..\\examples\\airport-fire.drill` (section 16.3).'],
+  ['As a service', 'Fill in `program/service.conf`, then `install-service-windows.bat` (as administrator), `sudo ./install-service-linux.sh` or `sudo ./install-service-mac.sh` (section 16.1).'],
   ['Tests', '`program/run-tests.bat` (or `run-tests.sh`): the 142 core tests.'],
 ], [1, 3]);
 note('`run-server` starts the Spring Boot server (`CrowdWatch-server.jar`) when it is in `program/`, which it is in every release. If it has not been built yet, it starts the built-in server of `CrowdWatch.jar` with the classic console and says so. Both use the same data.');
@@ -207,7 +207,7 @@ note('`run-server` starts the Spring Boot server (`CrowdWatch-server.jar`) when 
 H1('4  Architecture');
 H2('4.1  The parts');
 table(['Part', 'Folder', 'What it does'], [
-  ['Core', '`source/src/crowdwatch/core, model, ds`', 'CrowdMonitor holds the venue\'s state and every rule; AutoRules adds the automation; hand-written data structures (section 5). Knows nothing about the web.'],
+  ['Core', '`source/src/crowdwatch/core, model, ds`', 'CrowdMonitor holds the venue\'s state and every rule; AutoRules adds the automation; hand-written data structures (section 6). Knows nothing about the web.'],
   ['Data', '`source/src/crowdwatch/db`', 'Apache Derby database per venue: save, load, archive, backups, encryption of personal data, saving soon after a change (SaveSoon).'],
   ['Shared web code', '`source/src/crowdwatch/net`', 'ApiServer (rights, audit log, the 22 changes, the built-in JDK web server), ConsoleData (what the consoles read), Accounts (users and sessions), ApiExtras (reports, replay, messages, privacy), the classic pages.'],
   ['Spring Boot server', '`server/` (crowdwatch.spring)', 'Spring Security in front of every request; Spring controllers for reads and changes; the live-update WebSocket; HTTPS through Spring; serves the React console.'],
@@ -216,7 +216,25 @@ table(['Part', 'Folder', 'What it does'], [
   ['Program entry', '`source/src/crowdwatch/gui`', 'App: users, sites, drills, the built-in server, the desktop console; App.prepare() sets up a server for both web servers.'],
   ['Sensors', '`source/src/crowdwatch/feed`', 'Folder, web-address and TCP feeds, CSV, simulation and drill scripts.'],
 ], [2, 3, 6]);
-H2('4.2  How a request is handled');
+H2('4.2  The C4 model');
+P('The architecture is shown at the levels of the C4 model (Simon Brown): each level zooms into one part of the level above. Level 0 shows CrowdWatch in an organisation with several venues; level 1 one venue\'s CrowdWatch with its people and outside systems; level 2 the containers it is made of (the programs and data stores that run). Level 3, the components inside the server, is the web-layer diagram of section 4.5, and level 4, the code, is the class diagram of section 4.7. Blue boxes are CrowdWatch, dark blue people, grey outside systems; dashed lines are relationships with what they carry and how.');
+H3('Level 0: system landscape');
+P('An organisation that runs several venues runs one CrowdWatch per venue, each with its own server, database and control room. A head office follows them all in the Sites view of its own CrowdWatch, which asks each site for its overview with that site\'s control key. The venues share the outside systems: the company directory for sign-in, the SMS, WhatsApp or e-mail service for urgent alerts, monitoring, and the counting systems at each venue.');
+image('docs/diagrams/c4-level0-landscape.png', 'C4 level 0: system landscape - CrowdWatch across an organisation\'s venues');
+H3('Level 1: system context');
+P('At one venue, five kinds of people use CrowdWatch: control-room operators, security officers, administrators, response units with their scout phones, and visitors with the help page. Counting systems, the fire alarm panel and the weather station send it data; it sends unit messages to the radio or SMS gateway (which also drives public screens and PA), urgent alerts to the duty officer\'s phone, and checks passwords with the company directory. Monitoring tools and other CrowdWatch sites read from it. It does not call the emergency services, sound alarms or open doors: people do.');
+image('docs/diagrams/c4-level1-context.png', 'C4 level 1: system context - CrowdWatch at one venue');
+H3('Level 2: containers');
+table(['Container', 'Technology', 'What it does'], [
+  ['Control-room console', 'React, TypeScript (runs in the browser)', 'Every view, the live venue map, charts, English and Arabic (section 9).'],
+  ['Scout, help and classic pages', 'HTML, JavaScript (served by the server)', 'The scout phone page, the visitor help page, the classic console and the plain dashboard.'],
+  ['CrowdWatch server', 'Java 17, Spring Boot, Spring Security, Tomcat', 'Checks and answers every request, pushes live updates, and runs the core, the sensor feeds, the watchdog and the saving.'],
+  ['Desktop console', 'Java 17, JavaFX', 'The control room on one computer; runs the core itself.'],
+  ['Venue database', 'Apache Derby, embedded in the server\'s process', 'The venue\'s state, archive, minute frames, messages and audit log (section 14).'],
+  ['Data folder', 'Files (crowdwatch-data)', 'Accounts, the data key, backups, audit and log files, photos, reports, the certificate.'],
+], [2, 3, 5]);
+image('docs/diagrams/c4-level2-containers.png', 'C4 level 2: containers - what CrowdWatch is made of');
+H2('4.5  How a request is handled (C4 level 3)');
 steps([
   'A browser, scout phone or other system sends a request to the Spring Boot server (Tomcat, HTTP or HTTPS).',
   '**Spring Security** identifies the caller with CrowdWatch\'s accounts: a personal session token, the plain dashboard\'s cookie, the control key, the scout key or a scout phone\'s device code. Requests without the control key are rate-limited per address. The endpoint\'s role is checked against the shared role table (`ApiServer.refusal`): no sign-in gives 401, a role that may not use it 403, and a refused change is written to the audit log.',
@@ -225,15 +243,37 @@ steps([
   '**CrowdMonitor** applies the rules. Its listeners run afterwards on their own thread: the live-update WebSocket tells every console that something changed, SaveSoon schedules a save, gateways and SMS services are told about alerts.',
 ]);
 P('The built-in JDK server (`CrowdWatch.jar --server`) calls the same `ApiServer` methods directly, so both servers share the rules, rights, audit log and data code, and the 142 core tests cover the code the Spring server runs.');
-image('docs/CrowdWatch_Web-Layer.png', 'The web layer: clients, the Spring Boot server, the shared web code, the core and the database');
-H2('4.3  Live updates');
+image('docs/CrowdWatch_Web-Layer.png', 'C4 level 3: the components of the server - clients, Spring Security, the controllers, the shared web code, the core and the database');
+H2('4.6  Live updates');
 P('Each console keeps one WebSocket open to `/ws`, signed in like any other request (the session token or control key is given in the address, because browsers cannot add headers to a WebSocket). After a change the server sends `{"type":"change"}` (at most one every 300 ms) and, for an alert, `{"type":"alert","kind":...}`. The messages carry no venue data: the console then reloads what it shows through the normal API, which checks the user\'s rights. Each connection\'s sign-in is checked again every 60 seconds, and connections of users who signed out are closed. While the socket is down the console asks every 3 seconds, as before; the LIVE badge shows which is happening.');
-H2('4.4  Class diagram of the core');
+H2('4.7  Class diagram of the core (C4 level 4)');
 image('docs/CrowdWatch_Class-Diagram.png', 'The core: CrowdMonitor owns the model in AVL trees and linked lists; feeds, listeners, channels and the database work through it');
 P('Filled diamond = composition, solid arrow = association, dashed arrow = dependency, hollow triangle = implements. Full-size images: `docs/CrowdWatch_Class-Diagram.png` and `docs/CrowdWatch_Web-Layer.png` (also as SVG).');
 
 // =====================================================================================
-H1('5  Data structures');
+H1('5  Use cases');
+const UC = JSON.parse(fs.readFileSync(path.join(__dirname, 'use-cases.json'), 'utf8'));
+P('The use cases below say what people do with CrowdWatch, first for every venue and then for each sample venue with its own areas, incident categories, units and peaks (from its venue file). Each venue has a UML use-case diagram and a table: the use case, who takes part, and what happens. The actors are the people of section 4.2 (level 1) and three outside actors: the counting systems, the fire alarm panel, and the clock, which starts what is scheduled (peaks and shift changes).');
+table(['Actor', 'Who or what'], [
+  ['Control-room operator', 'Watches the crowd, enters counts, reports incidents and follows them'],
+  ['Security officer', 'The officer on watch: checks in, reviews automatic dispatches, decides on evacuations and public messages'],
+  ['Administrator', 'Users, the venue file, personal-data requests'],
+  ['Response unit', 'A team on the ground with a scout phone or radio: airport units, stadium stewards, the Umrah scout teams, mall guards'],
+  ['Visitor', 'A passenger, fan, pilgrim or shopper who asks for help'],
+  ['Counting system', 'Turnstiles, door counters, CCTV head counts, density estimates, the weather station'],
+  ['Fire alarm panel', 'Raises an alarm for an area'],
+  ['Clock (schedule)', 'Starts the preparation for a scheduled peak and the handover at a shift change'],
+], [1, 3]);
+UC.venues.forEach((v, k) => {
+  H2(`5.${k + 1}  ${v.title}`);
+  P(v.intro + (v.venueFile ? ` (venue file: \`${v.venueFile}\`)` : ''));
+  image(`docs/diagrams/use-cases-${v.key}.png`, `Use cases: ${v.title}`, 15);
+  const names = { ...UC.actors, ...v.names };
+  table(['ID', 'Use case', 'Actors', 'What happens'], v.cases.map((c) => [c[0], c[1], c[2].map((a) => names[a]).join(', '), c[3]]), [0.8, 2.6, 2.4, 6]);
+});
+
+// =====================================================================================
+H1('6  Data structures');
 P('The core uses hand-written, generic data structures (package `crowdwatch.ds`), not the Java collections.');
 table(['Structure', 'Used for', 'Cost'], [
   ['AVL tree (self-balancing search tree)', 'Areas, units, incidents and categories by ID; graph node index; distance cache; request parameters', 'O(log n) insert, search and delete, guaranteed'],
@@ -246,9 +286,9 @@ table(['Structure', 'Used for', 'Cost'], [
 ], [3, 6, 3]);
 
 // =====================================================================================
-H1('6  Rules');
+H1('7  Rules');
 bullets([
-  '**Crowd level** LOW, MODERATE, HIGH or CRITICAL from the occupancy percentage and the venue\'s three thresholds (airport 60 / 80 / 95). With a floor area the level also follows people per m² (section 11.9); the more dangerous of the two counts. Rising to HIGH or CRITICAL raises an alert; dropping below HIGH raises an all-clear.',
+  '**Crowd level** LOW, MODERATE, HIGH or CRITICAL from the occupancy percentage and the venue\'s three thresholds (airport 60 / 80 / 95). With a floor area the level also follows people per m² (section 12.9); the more dangerous of the two counts. Rising to HIGH or CRITICAL raises an alert; dropping below HIGH raises an all-clear.',
   '**Dispatch:** among AVAILABLE units that have the category\'s skill and can reach the area, the shortest walking time wins; a unit that does not speak the reporter\'s language gets a small penalty.',
   '**No suitable unit:** the incident waits in its priority queue. When a unit becomes free, CRITICAL is served first, then HIGH, NORMAL and LOW; first come, first served within a level.',
   '**Restricted areas:** a unit moves in only with an officer\'s approval; public routes never pass through them.',
@@ -263,7 +303,7 @@ bullets([
 ]);
 
 // =====================================================================================
-H1('7  Venue files');
+H1('8  Venue files');
 P('A venue is one text file. Copy `examples/template.venue`, which explains every line, edit it, and start the server or the desktop console with its path. Each venue gets its own database folder, `crowdwatch-data/<code>`.');
 code([
   'venue: Sample International Airport',
@@ -278,7 +318,7 @@ code([
   'auto: CROWD HIGH trend',
   'exit: CURB-1 CURB-2 TRAIN',
 ]);
-H2('7.1  The lines');
+H2('8.1  The lines');
 table(['Line', 'Meaning (default in brackets)'], [
   ['`venue:` `code:` `thresholds:`', 'Display name; short ID (also the database folder); the percentages where MODERATE, HIGH and CRITICAL start'],
   ['`area:`', 'ID | name | sector | type | capacity | restricted (optional)'],
@@ -286,12 +326,12 @@ table(['Line', 'Meaning (default in brackets)'], [
   ['`category:`', 'CODE | label | priority | required skill (blank = any unit) | personal (erase details when resolved)'],
   ['`unit:`', 'ID | name | starting area | skills and languages [| HH:MM-HH:MM working hours]'],
   ['`occupancy:`', 'Starting count of an area'],
-  ['`auto:`', 'CATEGORY HIGH or CRITICAL [trend]: report this category automatically when an area reaches the level (section 11.1)'],
+  ['`auto:`', 'CATEGORY HIGH or CRITICAL [trend]: report this category automatically when an area reaches the level (section 12.1)'],
   ['`exit:`', 'Exits and assembly points used by the evacuation plan'],
   ['`supervision:` `ack:`', 'Minutes between officer check-ins (15); minutes a unit has to acknowledge a task (2)'],
   ['`gateway:` `notify:`', 'Radio or SMS gateway that receives every unit message; address for urgent alerts nobody dealt with [minutes] (3)'],
   ['`archive:` `retention:`', 'How long resolved incidents stay in memory (24h); days before archived personal data is erased (30)'],
-  ['`feed:`', 'folder PATH [s], poll URL [s] [TOKEN-VARIABLE] or tcp PORT [addresses]: sensor connections (section 14.1)'],
+  ['`feed:`', 'folder PATH [s], poll URL [s] [TOKEN-VARIABLE] or tcp PORT [addresses]: sensor connections (section 15.1)'],
   ['`stale:` `jump:`', 'Minutes of silence before a sensor is stale (5); % of capacity a count may jump within a minute (40)'],
   ['`onscene:` `maxwait:` `autoclose:`', 'Chase a unit not on scene (10); stand-in after waiting (10); close a calmed automatic incident (10)'],
   ['`reinforce:` `reinforceskills:` `reinforcemax:` `reinforcehold:`', 'Units wanted at HIGH and CRITICAL (2 4); skills sent first (crowd-control security); longest walk at HIGH (10); minutes calm before they return (10)'],
@@ -309,9 +349,9 @@ table(['Line', 'Meaning (default in brackets)'], [
 P('A venue without the optional lines works as well: without `auto:` there is no automatic dispatch, without `exit:` no evacuation plan, without `map:` no venue map.');
 
 // =====================================================================================
-H1('8  The control-room console');
+H1('9  The control-room console');
 P('Any computer, tablet or phone on the venue network opens `http://<server>:8080/` in a browser. Nothing is installed: the console comes from the server and needs no internet connection.');
-H2('8.1  Signing in');
+H2('9.1  Signing in');
 bullets([
   'With personal logins, sign in with your user name and password, and the 6-digit code from your authenticator app if you set up two-step sign-in. Officers are checked in as the security officer at once.',
   'Without personal logins, or with **Use the control key instead**, sign in with your name and the control key. The key is kept in that browser only; **Sign out** forgets it.',
@@ -319,7 +359,7 @@ bullets([
   'The console and the classic console (`/legacy`) keep the sign-in in the same place, so moving between them keeps you signed in.',
 ]);
 image('screenshots/console-01-sign-in.png', 'Sign-in', 12);
-H2('8.2  The views');
+H2('9.2  The views');
 table(['View', 'What you can do', 'Who'], [
   ['Overview', 'Key figures, chips for what needs attention (proposals, heat, missing persons, messages to approve, doubtful sensors, count mismatches, units that have not acknowledged, areas about to turn CRITICAL), the live venue map, the busiest areas, areas by level, the most urgent incidents and the latest alerts. Automatic dispatch on or off.', 'All; switch: officers'],
   ['Areas and crowd', 'Every area with its fill, level, trend, minutes to CRITICAL, density and units; search and level filter. An area\'s panel shows its recent readings and takes a head count.', 'All'],
@@ -344,19 +384,19 @@ image('screenshots/console-09-reports.png', 'Reports for a period');
 image('screenshots/console-10-replay.png', 'Replay of the day, minute by minute');
 image('screenshots/console-11-venue-editor.png', 'The venue editor (administrators)');
 image('screenshots/console-12-users-and-audit.png', 'Venue settings: users, two-step sign-in, scout device codes and the audit log');
-H2('8.3  Languages, themes and phones');
+H2('9.3  Languages, themes and phones');
 P('The language button switches the console to Arabic, right to left; the choice is kept in that browser. Every fixed text, level, status and button is translated. Names from the venue file and identifiers such as I1003 stay as they are; sentences written by the server (alerts, results) stay in English. The theme button switches between dark (the default for control rooms) and light. On a phone the menu folds away and the views stack.');
 image('screenshots/console-14-arabic.png', 'The console in Arabic');
 image('screenshots/console-15-light.png', 'The light theme');
 image('screenshots/console-16-phone.png', 'On a phone', 4.5);
-H2('8.4  The Umrah venue');
+H2('9.4  The Umrah venue');
 image('screenshots/console-17-umrah-map.png', 'The Holy Mosques on the venue map, with crowd levels and units');
 image('screenshots/console-18-umrah-evacuation.png', 'Evacuation preview of the Mataf fire zone: the crowd is spread over several exits and the time to clear is estimated');
-H2('8.5  The classic pages');
+H2('9.5  The classic pages');
 P('The earlier plain-JavaScript console stays at `/legacy`, and the plain dashboard, which works without JavaScript, at `/classic` (with its own sign-in page and an HttpOnly, SameSite=Strict cookie).');
 
 // =====================================================================================
-H1('9  The desktop console');
+H1('10  The desktop console');
 P('The JavaFX desktop console runs on one computer, on the same monitor, database, autosave and watchdog as the server. Start it with `program/run.bat` (Windows) or `program/run.sh`; JavaFX 21 for Windows, Linux x64 and macOS is included in `program/lib/javafx`.');
 steps([
   'Choose Airport, Stadium or Umrah, or open your own .venue file. The first time, the venue\'s sample data is created in `crowdwatch-data/<code>`.',
@@ -369,10 +409,10 @@ image('screenshots/javafx-incident-details.png', 'Desktop console: an incident\'
 image('screenshots/javafx-sos-evacuation.png', 'Desktop console: SOS and evacuation');
 
 // =====================================================================================
-H1('10  Scout phones, radio and the visitor help page');
-H2('10.1  How units receive their orders');
+H1('11  Scout phones, radio and the visitor help page');
+H2('11.1  How units receive their orders');
 table(['Channel', 'How it works', 'Set-up'], [
-  ['Scout phone (issued phone or tablet)', 'Open `http://<server>:8080/scout` and enter the unit\'s device code once. The task appears in large type with the walking route and details; the phone vibrates and beeps on a new task, reminder, SOS or evacuation. Buttons: Acknowledge, On scene, Resolved and a red SOS. With a layout, a small map shows the route. Lost-person lookouts have a Found button. The phone also sends messages and photos, its position, duty and battery.', 'An officer issues a device code per unit (section 12.4); the shared scout key also works.'],
+  ['Scout phone (issued phone or tablet)', 'Open `http://<server>:8080/scout` and enter the unit\'s device code once. The task appears in large type with the walking route and details; the phone vibrates and beeps on a new task, reminder, SOS or evacuation. Buttons: Acknowledge, On scene, Resolved and a red SOS. With a layout, a small map shows the route. Lost-person lookouts have a Found button. The phone also sends messages and photos, its position, duty and battery.', 'An officer issues a device code per unit (section 13.4); the shared scout key also works.'],
   ['Radio gateway', 'Every message is posted as JSON (unit, kind, incident, text) to the venue\'s gateway, which sends it to the unit\'s radio as a text or text-to-speech, or as an SMS.', '`gateway:` line and a bridge for the radio system'],
   ['Radio operator', 'The server prints every message for a unit without an online phone as `RADIO >> unit: text` for an operator to read out.', 'Nothing extra'],
 ], [2, 6, 2]);
@@ -382,14 +422,14 @@ bullets([
 ]);
 image('screenshots/scout-device.png', 'Scout phone: the task with route and buttons', 8);
 image('screenshots/scout-lookout.png', 'Scout phone: a lost-person lookout with the Found button', 8);
-H2('10.2  The visitor help page');
+H2('11.2  The visitor help page');
 P('`/help` works without signing in, in English and Arabic: a visitor reports a lost person, someone unwell, a person they found or other help. The report becomes an incident marked [visitor report] and is dispatched as usual. A phone may send 3 reports in 10 minutes. Venue settings > Print help QR codes prints one code per public area; scanning it opens the page with the area chosen.');
 image('screenshots/help-page-arabic.png', 'The visitor help page in Arabic', 8);
 
 // =====================================================================================
-H1('11  Automation and the emergency plan');
+H1('12  Automation and the emergency plan');
 P('This section covers what CrowdWatch does without anyone pressing a button, and the SOS and evacuation plan. The software supports the people in the control room; it does not replace them, the venue\'s emergency plan, or the emergency services.');
-H2('11.1  Automatic dispatch on crowd levels');
+H2('12.1  Automatic dispatch on crowd levels');
 steps([
   'Sensors or staff update an area\'s count, and the level is worked out from the venue\'s thresholds.',
   'When the area reaches the level on the `auto:` line (HIGH in the samples), or a TREND warning says it will become CRITICAL within 10 minutes, CrowdWatch reports the venue\'s crowd category there itself.',
@@ -397,9 +437,9 @@ steps([
   'While the area stays crowded no duplicate is created; if it reaches CRITICAL, the same incident is raised to CRITICAL.',
   'An officer reviews it: approve, or reject as a false alarm (which closes it and frees the unit). An officer can switch automatic dispatch off, for example during a drill; crowd alerts are still raised.',
 ]);
-H2('11.2  Security officer supervision');
+H2('12.2  Security officer supervision');
 P('An officer checks in from a console (signing in counts as a check-in). The `supervision:` line sets how often (every 15 minutes in the samples). If nobody has checked in, or the check-in is overdue, a SUPERVISION alarm is raised and repeated every period until someone checks in. Reviewing an automatic dispatch, ordering or ending an evacuation and messaging all units each record the officer\'s name and count as a check-in.');
-H2('11.3  SOS');
+H2('12.3  SOS');
 P('An SOS comes from a scout\'s phone (with the scout\'s own position), from a console, or from another system. CrowdWatch then:');
 steps([
   'creates a CRITICAL incident of the built-in SOS category;',
@@ -408,16 +448,16 @@ steps([
   'alerts every other unit within 5 minutes\' walk as possible backup;',
   'raises an SOS alarm in the control room; the assigned unit must acknowledge like any task.',
 ]);
-H2('11.4  Evacuation');
+H2('12.4  Evacuation');
 P('Exits are listed on the `exit:` line. An officer chooses a zone (an area, a sector or a fire zone) and previews the plan, which changes nothing; then starts it. CrowdWatch then:');
 steps([
   'marks the zone, so routes for staff and signage avoid it;',
-  'plans every public area connected to the zone: the nearest exit outside the zone by a crowd-aware route that avoids the zone and never uses a lift; with exit flows and corridor capacities, large crowds are spread over several exits and the time until the zone is clear is estimated (section 11.8);',
+  'plans every public area connected to the zone: the nearest exit outside the zone by a crowd-aware route that avoids the zone and never uses a lift; with exit flows and corridor capacities, large crowds are spread over several exits and the time until the zone is clear is estimated (section 12.8);',
   'tells units inside the zone which exit to guide people to, and every other unit to keep the exits clear;',
   'shows an EVACUATION banner on every console and scout phone, and the routes on the map;',
   'when the officer ends the evacuation, reopens the zone and tells every unit.',
 ]);
-H2('11.5  Control-room emergency procedure');
+H2('12.5  Control-room emergency procedure');
 P('CrowdWatch does not call the emergency services, sound alarms, make announcements or open doors. Agree a procedure with the venue\'s safety officer; a starting point:');
 steps([
   'SOS alarm: confirm with the assigned unit by radio within a minute. If a life is at risk, call the emergency services at once (in Saudi Arabia 911 where the unified number is in service, otherwise 997 ambulance, 998 civil defence, 999 police; check the numbers for your venue).',
@@ -426,7 +466,7 @@ steps([
   'Evacuation: follow the venue\'s emergency plan and the authorities\' instructions first. CrowdWatch coordinates the units; it does not replace the fire alarm, PA system or door controls.',
   'Afterwards: end the evacuation, review and close the incidents.',
 ]);
-H2('11.6  Further automatic rules');
+H2('12.6  Further automatic rules');
 P('A watchdog runs these rules every 15 seconds (class AutoRules). Rules that send or move units act only while automatic dispatch is on; the sensor checks, shifts and handover reports always run. Every action raises an alert and is written to the history.');
 table(['Rule', 'What happens', 'Why'], [
   ['Stale sensor', 'No count for 5 min: the area is marked STALE and the nearest free unit is asked to count by eye; the next count clears it.', 'Automation must not trust a dead sensor.'],
@@ -444,7 +484,7 @@ table(['Rule', 'What happens', 'Why'], [
   ['Shifts and handover', 'Units go off and on duty with their working hours; at each shift change a handover report is written.', 'The next officer starts with the full picture.'],
   ['Count check', 'The gate counts say how many people should be inside; if the areas add up to a different number for 5 min, the control room is told (counted twice or missing).', 'Sensors that double count are found.'],
 ], [2, 6, 3]);
-H2('11.7  Lost persons');
+H2('12.7  Lost persons');
 steps([
   'The case is assigned like any incident, and a LOOKOUT with the description, place and time goes at once to every other unit. Units inside the search area search around them; units at an exit check everyone leaving.',
   'A child or vulnerable adult (words such as child, boy, girl, elderly, dementia, wheelchair, or an age of 12 or under or 75 or over) is raised to CRITICAL.',
@@ -453,10 +493,10 @@ steps([
   'Found: from a console, or a scout presses Found. The lookout stops, the person is brought to the meeting point (`meeting:`), and the case is resolved when they are reunited; the description and contact are then erased.',
   'Someone found alone is recorded as found, a unit looks after them, and the open cases are listed to compare.',
 ]);
-H2('11.8  Venue layout and evacuation planning');
+H2('12.8  Venue layout and evacuation planning');
 P('With exit flows (`exitflow:`) or corridor capacities (`link:` with people per minute), the evacuation plan is no longer "everyone to the nearest exit". Areas are planned largest crowd first; a crowd of more than 5,000 is split into groups (at most four), and each group takes the exit where it would be out soonest: walking time plus queueing at the exit and at every narrow link, counting everyone already sent there. Lifts are never used. Only areas connected to the zone are planned, so evacuating part of Makkah does not move anyone in Madinah.');
 P('The Umrah venue is a schematic of the real mosques: the Mataf and its upper levels, the King Fahd and King Abdullah expansions, the Mas\'a, the gates and courtyards in Makkah; the old mosque with the Rawdah, the north halls and the gates in Madinah. Positions, capacities, gate flows and walking times are estimates; the official plans and figures of the General Authority for the Affairs of the Two Holy Mosques must replace them, and the system must follow the evacuation plan approved by the Civil Defence.');
-H2('11.9  Counting people, density and heat');
+H2('12.9  Counting people, density and heat');
 bullets([
   'Each area\'s number is the people in it now. A camera or staff count replaces the previous number; a counter that only counts passes sends +1 or -1.',
   'A counter on a doorway between two zones sends a **move** (from, to, count): both zones change together, so nobody is counted in both or in neither. Counters at the outer gates send moves from or to OUTSIDE; from these the count check knows how many should be inside.',
@@ -466,8 +506,8 @@ bullets([
 ]);
 
 // =====================================================================================
-H1('12  Security');
-H2('12.1  Roles');
+H1('13  Security');
+H2('13.1  Roles');
 P('Each person signs in with their own user name and password and has one of three roles; each role can do everything the roles before it can.');
 table(['Role', 'What it may do'], [
   ['OPERATOR', 'Read everything; enter counts and movements, report incidents, put units on scene, resolve, send another unit, escalate, raise an alarm, SOS, record found persons, messages with units, weather.'],
@@ -476,16 +516,16 @@ table(['Role', 'What it may do'], [
   ['Scout phone', 'With its device code: only its own unit\'s task, messages and photos, position and duty, SOS and Found. With the shared scout key: the same functions for any unit.'],
   ['Control key', 'Everything, for sensors, gateways and other systems.'],
 ], [1, 4]);
-H2('12.2  How the server checks every request');
+H2('13.2  How the server checks every request');
 bullets([
-  '**Spring Security** identifies every request before any CrowdWatch code runs (section 4.2) and turns the caller into a Spring authentication with the role as its authority. The role each endpoint needs comes from one table shared with the built-in server (`ApiServer.refusal`), so the two servers cannot disagree.',
+  '**Spring Security** identifies every request before any CrowdWatch code runs (section 4.5) and turns the caller into a Spring authentication with the role as its authority. The role each endpoint needs comes from one table shared with the built-in server (`ApiServer.refusal`), so the two servers cannot disagree.',
   'No sign-in: 401. A role that may not use the endpoint: 403 with the reason, and a refused change is written to the audit log. Behind it, the API checks again, and also that a device code acts only for its own unit\'s tasks (403 otherwise).',
   'For a signed-in user, the officer name is always their own: a name typed in a form is ignored, so nobody can act in someone else\'s name.',
   'Requests without the control key: 50 a second per address on average, bursts of 200 (more get 429; `-Dcrowdwatch.rateLimit=N`).',
   'No server sessions and no CSRF tokens: the console sends its sign-in in a header, which another web site cannot make a browser send; the plain dashboard\'s cookie is HttpOnly and SameSite=Strict.',
   'Headers on every reply: nosniff, framing only by this site, no referrer to other sites, HSTS over HTTPS, and a content security policy for the console (scripts only from this server).',
 ]);
-H2('12.3  Users and passwords');
+H2('13.3  Users and passwords');
 bullets([
   'Users are added with `program/add-user.bat <name> <ROLE>` (or `add-user.sh`), in the desktop console, or by an administrator in Venue settings. The last administrator cannot be demoted or switched off.',
   'Passwords are never stored: `crowdwatch-data/accounts.txt` holds a random salt and a PBKDF2-SHA256 hash (100,000 rounds). Passwords need at least 8 characters. After 5 wrong passwords in a row the name is locked for 5 minutes. A sign-in lasts 12 hours and survives a restart (only a hash of the token is kept); signing out, a new password or switching a user off ends it.',
@@ -493,22 +533,22 @@ bullets([
   '**Forgot password:** an administrator makes a one-time reset code (valid 30 minutes); the user sets a new password with it on the sign-in page. Signed-in users change their own password in Venue settings.',
   '**Company directory:** `--user NAME ROLE directory` makes a user sign in with LDAP or Active Directory (`CROWDWATCH_LDAP_URL`, `CROWDWATCH_LDAP_USER`); the role stays in CrowdWatch.',
 ]);
-H2('12.4  Scout device codes');
+H2('13.4  Scout device codes');
 P('An officer issues a 10-character code for one unit (Venue settings > Scout device codes) and types it on that unit\'s phone. The phone can then see only its own unit and act only on its own tasks. Issuing a new code cancels the old one, so a lost phone is shut out at once.');
-H2('12.5  Audit log');
+H2('13.5  Audit log');
 P('Every sign-in, failed sign-in, change and refusal is written with time, user, role, action, parameters and result (never a password or key) to the venue\'s database (table AUDIT, never deleted by a save) and to a daily file `crowdwatch-data/audit/<venue>/`. Desktop actions are written too. Officers read the newest 200 entries in Venue settings.');
-H2('12.6  Personal data');
+H2('13.6  Personal data');
 bullets([
   'Incident details, contacts and message texts are encrypted in the database (AES-256-GCM) with the key in `crowdwatch-data/data.key` (owner only) or `CROWDWATCH_DATA_KEY`. Keep a copy of the key apart from the backups.',
   'Archived incidents keep their details and contact for 30 days (`retention:`), then these are erased; the rest of the record stays for reports.',
   '**Personal-data requests** (administrators): search by name, phone or e-mail across current and archived incidents and messages, export the result as a file, or erase it; searches and erasures are in the audit log.',
 ]);
-H2('12.7  HTTPS');
+H2('13.7  HTTPS');
 P('Set `CROWDWATCH_HTTPS=1` before `run-server` (or add `--https`). Only TLS 1.3 and 1.2 are accepted, and browsers are told to keep using HTTPS. For real use, put the venue\'s certificate and key in a PKCS12 file and name it with `-Dcrowdwatch.keystore=<file>` (default `crowdwatch-data/tls/server.p12`), with its password in `CROWDWATCH_KEYSTORE_PASSWORD`. Without one, CrowdWatch makes a self-signed certificate for this computer; the connection is encrypted, but each browser warns once until it is trusted.');
 
 // =====================================================================================
-H1('13  Data, saving and backups');
-H2('13.1  The database');
+H1('14  Data, saving and backups');
+H2('14.1  The database');
 P('CrowdWatch uses **Apache Derby 10.16**, a database written in Java that runs inside the program: a venue installs nothing else. Each venue has its own database in `crowdwatch-data/<code>/`. The same database code is used by the Spring server, the built-in server and the desktop console.');
 table(['Tables', 'What they hold'], [
   ['venue, area_state, units, unit_skills, counters, state', 'The venue file, each area\'s count and level, units, the next incident number, officer, automation and evacuation state'],
@@ -518,7 +558,7 @@ table(['Tables', 'What they hold'], [
   ['messages, audit', 'Messages between units and the control room (encrypted); the audit log'],
 ], [2, 4]);
 P('A database from an earlier version is upgraded automatically when it opens (new columns and tables are added).');
-H2('13.2  Saving');
+H2('14.2  Saving');
 bullets([
   '**About 10 seconds after a change** (`-Dcrowdwatch.saveDelay`, 2 to 60): the first change schedules one save, and every change until then is part of it, so a busy venue saves about every 10 seconds, not after every sensor reading.',
   '**Every 60 seconds** as well (`-Dcrowdwatch.autosave`), and once more when the server or desktop console is stopped normally.',
@@ -526,7 +566,7 @@ bullets([
   'A crash or power cut therefore loses about 10 seconds of work. This was checked by killing a server 12 seconds after a change and restarting it: the change was there (test case TC-142 checks the timing).',
   'Only one program may open a venue\'s database. A second one refuses to start (server) or asks to run in memory only (desktop), instead of showing sample data.',
 ]);
-H2('13.3  Backups and restoring');
+H2('14.3  Backups and restoring');
 bullets([
   'The first save of each day copies the database to `crowdwatch-data/backups/<venue>/<date>/`; the newest 7 are kept.',
   'Copy them to a second disk or network share as well with `-Dcrowdwatch.backupCopy=PATH` or `CROWDWATCH_BACKUP_COPY`.',
@@ -542,8 +582,8 @@ table(['In crowdwatch-data/', 'What it is'], [
 ], [2, 4]);
 
 // =====================================================================================
-H1('14  Integrating real systems');
-H2('14.1  Sensors');
+H1('15  Integrating real systems');
+H2('15.1  Sensors');
 P('A venue file names its sensor connections with `feed:` lines; they start and stop with the server. Every connection takes the same count lines, one reading a line: `AREA,COUNT` (people in an area now), `AREA,+N` or `AREA,-N` (people who entered or left), `move,FROM,TO,COUNT` (through a door between two areas; OUTSIDE for the outer gates).');
 table(['Venue line', 'For'], [
   ['`feed: folder counts 10`', 'Counting systems that export a file: every 10 s each .csv or .txt file in the folder is read once and moved to done/ (or failed/).'],
@@ -564,7 +604,7 @@ code([
   '    public boolean running() { return vendorApi.isOpen(); }',
   '}',
 ]);
-H2('14.2  Outputs');
+H2('15.2  Outputs');
 P('Register a `MonitorListener` to pass alerts to SMS, a PA system, signage or another service. Listeners are called on their own event thread, in order, outside the monitor\'s lock, so a slow gateway cannot hold up the sensors or the consoles. Without code: the `gateway:` line (every unit message), `notify:` (urgent alerts nobody dealt with), `GET /api/alerts`, `GET /health` (ok, degraded or fail, no key) and `GET /metrics` (Prometheus, with the control key or `CROWDWATCH_METRICS_KEY`).');
 code([
   'monitor.addListener(new MonitorListener() {',
@@ -574,7 +614,7 @@ code([
   '    }',
   '});',
 ]);
-H2('14.3  The API');
+H2('15.3  The API');
 P('Requests send the sign-in as `Authorization: Bearer <token>` (from `POST /api/login`) or `X-Api-Key: <key>`; changes are form posts. Replies are JSON; a change gives 200 when done and 422 with the reason when a rule refuses it. "Served by" names the Spring component.');
 table(['Method and path', 'Parameters', 'Returns', 'Role', 'Served by'], [
   ['GET /api/overview, /areas, /incidents, /units, /alerts, /venue, /layout, /lost, /announcements, /status', '-', 'What the consoles show', 'any', 'ConsoleController'],
@@ -596,19 +636,19 @@ table(['Method and path', 'Parameters', 'Returns', 'Role', 'Served by'], [
 ], [4, 3, 4, 2, 2]);
 
 // =====================================================================================
-H1('15  Running a venue');
-H2('15.1  As a service');
+H1('16  Running a venue');
+H2('16.1  As a service');
 P('Fill in `program/service.conf` (venue, port, keys, HTTPS), then run `install-service-windows.bat` as administrator (a task that starts with Windows and restarts the server if it stops), `sudo ./install-service-linux.sh` (systemd) or `sudo ./install-service-mac.sh` (launchd). Each start uses `CrowdWatch-server.jar` when it is in `program/`, otherwise `CrowdWatch.jar`, so building the Spring server later needs no reinstall. Remove the service with the same script and `remove`. The server\'s output also goes to `crowdwatch-data/logs`, one file a day, 30 days kept.');
-H2('15.2  Updating');
+H2('16.2  Updating');
 P('Stop the server, replace `program/` with the new release (keep `crowdwatch-data/` and `service.conf`), and start it again. The database is upgraded automatically; sign-ins survive.');
-H2('15.3  Drills');
+H2('16.3  Drills');
 P('`program/run-drill.bat airport 8081 ..\\examples\\airport-fire.drill` starts a training server with the venue\'s sample data: it never opens the real database, every screen shows DRILL, and the script plays timed events (counts, a lost child, a medical case, a fire alarm, heat, an SOS). A drill file has one event a line: `MM:SS count|move|incident|lost|alarm|sos|weather|say ...`.');
-H2('15.4  Several venues');
+H2('16.4  Several venues');
 P('A head office lists its sites with `java -jar CrowdWatch.jar --site add NAME http://address:port CONTROL-KEY` (kept in `crowdwatch-data/sites.txt`, owner only); the console\'s Sites view shows each site\'s situation and opens it. Each venue runs its own server.');
 
 // =====================================================================================
-H1('16  Building and testing');
-H2('16.1  Building');
+H1('17  Building and testing');
+H2('17.1  Building');
 table(['Script (top folder)', 'What it does', 'Needs'], [
   ['`download-dependencies`', 'Fetches Maven, the Java libraries and the console\'s libraries once', 'JDK 17+, Node.js 20+'],
   ['`build`', 'Compiles `source/src`, makes `program/CrowdWatch.jar`, runs the 142 core tests (`--no-tests` skips them)', 'JDK 17+'],
@@ -617,7 +657,7 @@ table(['Script (top folder)', 'What it does', 'Needs'], [
   ['`docs/source/build-guide.sh`', 'Rebuilds this guide (Word and PDF) from `make-guide.js`', 'Node.js, LibreOffice'],
 ], [2, 5, 2]);
 P('GitHub builds and tests every change on Windows and Linux: the core build, and the Spring server with the console. Pushing a tag such as `v3.0` publishes a release with the ready-to-run zip, both jars included.');
-H2('16.2  The tests');
+H2('17.2  The tests');
 const tc = testCases();
 table(['Suite', 'Cases', 'What it covers'], [
   ['Core (`TestRunner`)', `${tc.passed} passed, ${tc.failed} failed`, 'Data structures, every rule on four venues, the network API, the database, automation, sensors, security, reports and the rest, with a fixed clock (table below).'],
@@ -628,7 +668,7 @@ table(['Suite', 'Cases', 'What it covers'], [
 P('The core test cases, from the latest run (`test-evidence/test-output.txt`):');
 table(['TC', 'What is tested', 'Expected (and actual)', 'Result'],
   tc.cases.map((c) => [c.n, c.title, c.expected === c.actual ? c.expected : `${c.expected}\nactual: ${c.actual}`, c.result]), [1, 6, 5, 1.3]);
-H2('16.3  Load tests');
+H2('17.3  Load tests');
 P('The server was loaded with a generated venue of 400 areas, 760 links and 250 units with automation on (`test-evidence/stress-test`). The first table is the original stress test of the built-in server, before and after its fixes.');
 table(['Measure', 'First version', 'After the fixes'], [
   ['Busy venue: 250 scout phones, 20 consoles, 400 sensors (1/s), 2 reports/s', '506 req/s, no errors; scout p99 43 ms', '508 req/s, no errors; scout p99 5 ms'],
@@ -646,7 +686,7 @@ if (fs.existsSync(cmpFile)) {
 }
 
 // =====================================================================================
-H1('17  Weak points removed');
+H1('18  Weak points removed');
 table(['Earlier weak point', 'Fix', 'Evidence'], [
   ['Version 3.0', '', ''],
   ['The browser console asked the server every 3 seconds, so changes reached other screens late and every console added load', 'Changes are pushed over a WebSocket; consoles reload only when something changed', 'Spring test: change pushed in under 2 s; browser: shown in about 0.8 s'],
@@ -671,7 +711,7 @@ table(['Earlier weak point', 'Fix', 'Evidence'], [
 ], [4, 4, 3]);
 
 // =====================================================================================
-H1('18  Known limitations and future work');
+H1('19  Known limitations and future work');
 table(['Limitation', 'Effect', 'Possible improvement'], [
   ['One server per venue, embedded database', 'If the server computer fails, every console stops until it is restarted or the database is restored elsewhere; about 10 s of changes can be lost.', 'A standby server that takes over automatically (a client/server database such as PostgreSQL with replication).'],
   ['Every save rewrites the current state', 'About 2 s of writing with 30,000 incidents; with saving after changes, a very large venue spends that every 10 s in the background.', 'Save only what changed.'],
@@ -679,7 +719,7 @@ table(['Limitation', 'Effect', 'Possible improvement'], [
   ['The newest features are in the browser console', 'Reports, replay, the editor, sites, messages and personal-data requests are not in the desktop console.', 'Add them to the desktop console, or retire it in favour of the browser console.'],
   ['The scout phone and help pages are the earlier pages', 'They work with the new server, but are not built with React.', 'Rebuild them with the console\'s components.'],
   ['Scout phones are web pages', 'No push notifications without the page open; a locked phone may stop checking; positions are what the scout reports, not GPS.', 'A phone app with push notifications, offline queueing and indoor positioning.'],
-  ['A self-signed certificate makes browsers warn', 'Each browser and phone warns once until it is trusted.', 'Use the venue\'s own certificate (section 12.7).'],
+  ['A self-signed certificate makes browsers warn', 'Each browser and phone warns once until it is trusted.', 'Use the venue\'s own certificate (section 13.7).'],
   ['Two-step sign-in is optional', 'An administrator without it is marked, not forced.', 'Make it compulsory for administrators and officers.'],
   ['Directory sign-in checks only the password', 'The role is set in CrowdWatch, not read from directory groups.', 'Map directory groups to roles.'],
   ['The rate limit is per address', 'Devices behind one router share one limit.', 'Raise it, or give trusted gateways the control key.'],
