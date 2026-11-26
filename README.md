@@ -13,7 +13,7 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 | Desktop console (JavaFX) | `program/run.bat` or `program/run.sh`, then choose Airport, Stadium, Umrah or a `.venue` file |
 | Users | `program/add-user.bat <name> <ROLE>` or `./add-user.sh` (roles OPERATOR, OFFICER, ADMIN; the first should be ADMIN) |
 | Server and web console | `program/run-server.bat` or `program/run-server.sh`, then open `http://<this-pc>:8080/` and sign in |
-| Server on Spring Boot, new React console (preview) | `program/run-spring.bat` or `program/run-spring.sh` (same arguments), then open `http://<this-pc>:8080/`; build it with `build-spring.bat` / `./build-spring.sh` (JDK 17+, Maven, Node.js 20+); see below |
+| Server on Spring Boot, new React console (preview) | `program/run-spring.bat` or `program/run-spring.sh` (same arguments), then open `http://<this-pc>:8080/`; build it with `build-spring.bat` / `./build-spring.sh` (JDK 17+ and Node.js 20+; `download-dependencies.bat` / `.sh` fetches Maven and all libraries once); see below |
 | HTTPS | add `--https`, or set `CROWDWATCH_HTTPS=1` before `run-server` |
 | Scout phones | `http://<server>:8080/scout` with the unit's device code |
 | Drill (training) | `program/run-drill.bat` or `./run-drill.sh airport 8081 ../examples/airport-fire.drill` |
