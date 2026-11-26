@@ -13,4 +13,4 @@ cd /d "%~dp0server"
 echo Building the server (Spring Boot)...
 if "%~1"=="--no-tests" (call mvnw.cmd -B -q package -DskipTests || exit /b 1) else (call mvnw.cmd -B -q package || exit /b 1)
 copy /y target\CrowdWatch-server.jar ..\program\CrowdWatch-server.jar >nul
-echo Built program\CrowdWatch-server.jar - start it with program\run-spring.bat
+echo Built program\CrowdWatch-server.jar - start it with program\run-server.bat

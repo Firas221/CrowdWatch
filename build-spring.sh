@@ -14,4 +14,4 @@ cd ../server
 echo "Building the server (Spring Boot)..."
 if [ "$1" = "--no-tests" ]; then sh mvnw -B -q package -DskipTests; else sh mvnw -B -q package; fi
 cp target/CrowdWatch-server.jar ../program/CrowdWatch-server.jar
-echo "Built program/CrowdWatch-server.jar - start it with program/run-spring.sh"
+echo "Built program/CrowdWatch-server.jar - start it with program/run-server.sh"

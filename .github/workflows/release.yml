@@ -48,5 +48,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "CrowdWatch $TAG" \
-            --notes "Ready-to-run package: unzip, then run program/run-server.bat (or run-server.sh) and open http://localhost:8080/, or program/run-spring.bat (run-spring.sh) for the Spring Boot server with the new React console and live updates, or program/run.bat (run.sh) for the desktop console. Needs Java 17 or newer. See README.md and docs/ for the guide." \
+            --notes "Ready-to-run package: unzip, run program/run-server.bat (or run-server.sh) and open http://localhost:8080/ for the control room console (Spring Boot server with the React console and live updates). program/run.bat (run.sh) starts the desktop console. Needs Java 17 or newer. See README.md and docs/ for the guide." \
             || gh release upload "$TAG" "$ZIP" --clobber

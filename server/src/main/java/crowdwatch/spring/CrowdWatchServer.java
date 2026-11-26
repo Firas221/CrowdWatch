@@ -43,7 +43,7 @@ public class CrowdWatchServer {
         else for (int k = 2; k < rest.size(); k++) srv.add(rest.get(k));
         App.Headless h = App.prepare(srv.toArray(new String[0]), drill, script);
         if (h == null) return;
-        start(h, https, args);
+        start(h, https);   // CrowdWatch's own arguments are not Spring settings
     }
 
     /**

@@ -11,7 +11,9 @@ if [ "$1" = "remove" ]; then launchctl unload "$PLIST" 2>/dev/null || true; rm -
 . ./service.conf
 JAVA="$(/usr/libexec/java_home -v 17+ 2>/dev/null)/bin/java"
 [ -x "$JAVA" ] || JAVA="$(command -v java)"
-ARGS="<string>$JAVA</string><string>-jar</string><string>CrowdWatch.jar</string><string>--server</string><string>${VENUE:-airport}</string><string>${PORT:-8080}</string>"
+# the jar is chosen at every start: CrowdWatch-server.jar (Spring Boot) when it is here, otherwise CrowdWatch.jar
+CMD='JAR=CrowdWatch-server.jar; [ -f "$JAR" ] || JAR=CrowdWatch.jar; exec "$0" -jar "$JAR" --server "$@"'
+ARGS="<string>/bin/sh</string><string>-c</string><string>$CMD</string><string>$JAVA</string><string>${VENUE:-airport}</string><string>${PORT:-8080}</string>"
 [ -n "$CONTROL_KEY" ] && ARGS="$ARGS<string>$CONTROL_KEY</string>"
 [ -n "$SCOUT_KEY" ] && ARGS="$ARGS<string>$SCOUT_KEY</string>"
 [ -n "$CROWDWATCH_HTTPS" ] && ARGS="$ARGS<string>--https</string>"
