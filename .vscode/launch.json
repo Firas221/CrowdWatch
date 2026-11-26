@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "CrowdWatch desktop console",
+      "request": "launch",
+      "mainClass": "crowdwatch.fx.FxLauncher",
+      "vmArgs": "--module-path ${workspaceFolder}/program/lib/javafx/win --add-modules javafx.controls",
+      "cwd": "${workspaceFolder}/program",
+      "args": ""
+    },
+    {
+      "type": "java",
+      "name": "CrowdWatch server (airport, port 8080)",
+      "request": "launch",
+      "mainClass": "crowdwatch.gui.App",
+      "cwd": "${workspaceFolder}/program",
+      "args": "--server airport 8080",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "CrowdWatch tests",
+      "request": "launch",
+      "mainClass": "crowdwatch.test.TestRunner",
+      "cwd": "${workspaceFolder}/program"
+    }
+  ]
+}

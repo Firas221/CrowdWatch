@@ -1,0 +1,9 @@
+{
+  "java.project.sourcePaths": ["source/src"],
+  "java.project.outputPath": "build/vscode",
+  "java.project.referencedLibraries": [
+    "source/lib/*.jar",
+    "program/lib/javafx/win/*.jar"
+  ],
+  "java.configuration.updateBuildConfiguration": "automatic"
+}

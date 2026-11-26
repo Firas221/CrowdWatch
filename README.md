@@ -19,6 +19,7 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 | Run as a service | fill in `program/service.conf`, then `install-service-windows.bat` (as administrator) or `sudo ./install-service-linux.sh` / `install-service-mac.sh` |
 | Tests (141 cases) | `program/run-tests.bat` or `program/run-tests.sh` |
 | Build from source | `build.bat` or `./build.sh` (JDK 17+): makes `program/CrowdWatch.jar` and runs the tests |
+| VS Code | open the top `CrowdWatch` folder with the Extension Pack for Java; Run and Debug has the desktop console, the server and the tests (settings in `.vscode`, JavaFX for Windows) |
 
 ## What is in it
 
