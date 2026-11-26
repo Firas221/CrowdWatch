@@ -27,15 +27,20 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
       - name: Build and test
         run: ./build.sh
+      - name: Build and test the Spring Boot server with the React console
+        run: ./build-spring.sh
       - name: Package
         run: |
           NAME="CrowdWatch-${TAG}"
           mkdir -p "dist/$NAME"
-          cp -R program source docs examples README.md README.txt LICENSE "dist/$NAME/"
+          cp -R program source server web docs examples README.md README.txt LICENSE "dist/$NAME/"
           [ -d screenshots ] && cp -R screenshots "dist/$NAME/" || true
-          rm -rf "dist/$NAME/program/build" "dist/$NAME/program/crowdwatch-data"
+          rm -rf "dist/$NAME/program/build" "dist/$NAME/program/crowdwatch-data" "dist/$NAME/web/node_modules" "dist/$NAME/server/target" "dist/$NAME/server/src/main/resources/static"
           (cd dist && zip -qr "$NAME.zip" "$NAME")
           echo "ZIP=dist/$NAME.zip" >> "$GITHUB_ENV"
       - name: Publish the release
@@ -43,5 +48,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "CrowdWatch $TAG" \
-            --notes "Ready-to-run package: unzip, then run program/run-server.bat (or run-server.sh) and open http://localhost:8080/, or program/run.bat (run.sh) for the desktop console. Needs Java 17 or newer. See README.md and docs/ for the guide." \
+            --notes "Ready-to-run package: unzip, then run program/run-server.bat (or run-server.sh) and open http://localhost:8080/, or program/run-spring.bat (run-spring.sh) for the Spring Boot server with the new React console and live updates, or program/run.bat (run.sh) for the desktop console. Needs Java 17 or newer. See README.md and docs/ for the guide." \
             || gh release upload "$TAG" "$ZIP" --clobber

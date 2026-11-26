@@ -91,7 +91,65 @@ public class App {
      * message also goes to the venue's radio gateway if one is configured. The {@link Watchdog} runs the officer and acknowledgement checks.
      */
     private static void headless(String[] args, boolean https, boolean drill, String drillScript) throws Exception {
-        if (args.length < 2) { System.out.println("Usage: java -jar CrowdWatch.jar --server <airport|stadium|umrah|file.venue> [port] [control-key] [scout-key] [--https]"); return; }
+        Headless h = prepare(args, drill, drillScript);
+        if (h == null) return;
+        int bound = h.api.start(h.port, https ? tls() : null);
+        System.out.println("CrowdWatch server for " + h.monitor.venueName() + " on " + (https ? "https" : "http") + "://localhost:" + bound + "/  (Ctrl+C to stop)");
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> { h.api.stop(); h.stop(); }));
+        Thread.currentThread().join();
+    }
+
+    /**
+     * A headless server made ready by {@link #prepare}: the monitor with its venue, the API with
+     * accounts and database, sensor feeds, the watchdog and the autosave, all running except the
+     * web server itself. The JDK server ({@code --server}) and the Spring Boot server both use it.
+     */
+    public static final class Headless {
+        /** The shared monitor. */
+        public final CrowdMonitor monitor;
+        /** The API: answers every request, whichever web server received it. */
+        public final crowdwatch.net.ApiServer api;
+        /** Port asked for on the command line (default 8080). */
+        public final int port;
+        /** True for a drill (training, nothing saved). */
+        public final boolean drill;
+        private final Database db;
+        private final crowdwatch.ds.LinkedList<crowdwatch.feed.CrowdFeed> feeds;
+        private final Watchdog watchdog;
+        private final java.util.concurrent.ScheduledExecutorService saver;
+        private boolean stopped;
+
+        private Headless(CrowdMonitor m, crowdwatch.net.ApiServer api, int port, boolean drill, Database db,
+                         crowdwatch.ds.LinkedList<crowdwatch.feed.CrowdFeed> feeds, Watchdog watchdog, java.util.concurrent.ScheduledExecutorService saver) {
+            this.monitor = m; this.api = api; this.port = port; this.drill = drill; this.db = db; this.feeds = feeds; this.watchdog = watchdog; this.saver = saver;
+        }
+
+        /** Stops the feeds, the watchdog and the autosave, then saves a last time (once; later calls do nothing). */
+        public synchronized void stop() {
+            if (stopped) return;
+            stopped = true;
+            crowdwatch.feed.Feeds.stopAll(feeds);
+            watchdog.stop();
+            saver.shutdown();
+            try { saver.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
+            monitor.awaitListeners(2000);
+            if (db == null) { System.out.println("Stopped (memory only, nothing saved)."); return; }
+            try { db.save(monitor); System.out.println("Saved and stopped."); }
+            catch (Exception e) { System.out.println("FINAL SAVE FAILED: " + Database.explain(e)); }
+            Database.shutdown();
+        }
+    }
+
+    /**
+     * Sets up a headless server without starting its web server: prints alerts to the console,
+     * saves to the database every 60 seconds, and refuses (exit code 1) if the venue's database
+     * cannot be used.
+     *
+     * @param args {@code --server <venue> [port] [control-key] [scout-key]}
+     * @return the running parts, or null after printing the usage if the arguments are incomplete
+     */
+    public static Headless prepare(String[] args, boolean drill, String drillScript) throws Exception {
+        if (args.length < 2) { System.out.println("Usage: java -jar CrowdWatch.jar --server <airport|stadium|umrah|file.venue> [port] [control-key] [scout-key] [--https]"); return null; }
         VenueProfile p = pick(args[1]);
         int port = args.length > 2 ? Integer.parseInt(args[2]) : 8080;
         CrowdMonitor m = new CrowdMonitor(Clock.SYSTEM);
@@ -134,8 +192,6 @@ public class App {
         }
         if (accounts.hasUsers()) System.out.println("Personal logins are on: " + accounts.users().length + " user(s). Every change is written to the audit log.");
         else if (args.length < 4 || args[3].isBlank()) System.out.println("WARNING: no users and no control key - anyone on the network can read and change everything. Add users with: java -jar CrowdWatch.jar --user <name> <ROLE>");
-        int bound = api.start(port, https ? tls() : null);
-        System.out.println("CrowdWatch server for " + m.venueName() + " on " + (https ? "https" : "http") + "://localhost:" + bound + "/  (Ctrl+C to stop)");
         if (db != null && Database.backupCopyFolder() != null) System.out.println("Daily backups are also copied to " + Database.backupCopyFolder().getAbsolutePath());
         if (db != null) System.out.println("Saved every " + AUTOSAVE_SECONDS + " s; personal fields are encrypted with " + (System.getenv(crowdwatch.db.FieldCipher.KEY_VARIABLE) != null
             ? crowdwatch.db.FieldCipher.KEY_VARIABLE : db.keyFile().getPath() + " - keep a copy of it apart from the backups"));
@@ -143,19 +199,7 @@ public class App {
         if (db != null) saver.scheduleAtFixedRate(() -> {
             try { db.save(m); } catch (Exception e) { System.out.println(m.now() + "  AUTOSAVE FAILED: " + Database.explain(e)); }
         }, AUTOSAVE_SECONDS, AUTOSAVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            api.stop();
-            crowdwatch.feed.Feeds.stopAll(feeds);
-            watchdog.stop();
-            saver.shutdown();
-            try { saver.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
-            m.awaitListeners(2000);
-            if (db == null) { System.out.println("Stopped (memory only, nothing saved)."); return; }
-            try { db.save(m); System.out.println("Saved and stopped."); }
-            catch (Exception e) { System.out.println("FINAL SAVE FAILED: " + Database.explain(e)); }
-            Database.shutdown();
-        }));
-        Thread.currentThread().join();
+        return new Headless(m, api, port, drill, db, feeds, watchdog, saver);
     }
 
     /** Seconds between automatic saves (property crowdwatch.autosave, at least 10; default 60). */
@@ -207,6 +251,15 @@ public class App {
      * only by the owner where the file system allows).
      */
     public static javax.net.ssl.SSLContext tls() throws java.io.IOException {
+        KeyStore k = keyStore();
+        return crowdwatch.net.Tls.context(k.file(), k.password());
+    }
+
+    /** The server's key store file and its password, as used by {@link #tls()} (made the first time if needed). */
+    public record KeyStore(java.io.File file, char[] password) { }
+
+    /** @return the key store for HTTPS, making a self-signed one first if there is none (see {@link #tls()}) */
+    public static KeyStore keyStore() throws java.io.IOException {
         java.io.File ks = new java.io.File(System.getProperty("crowdwatch.keystore", "crowdwatch-data/tls/server.p12"));
         Path pwFile = Path.of("crowdwatch-data", "tls", "keystore-password.txt");
         char[] pw = crowdwatch.net.Tls.passwordFromEnvironment();
@@ -225,7 +278,7 @@ public class App {
             crowdwatch.net.Tls.selfSigned(ks, pw, "localhost", "127.0.0.1", host, ip);
             System.out.println("Made a self-signed certificate in " + ks + " - browsers will warn until it is trusted; use the venue's own certificate for real use.");
         }
-        return crowdwatch.net.Tls.context(ks, pw);
+        return new KeyStore(ks, pw);
     }
 
     /**

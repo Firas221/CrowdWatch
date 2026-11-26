@@ -1,0 +1,38 @@
+{
+  "name": "crowdwatch-console",
+  "private": true,
+  "version": "3.0.0",
+  "description": "CrowdWatch control-room console (React, TypeScript). Built into the Spring Boot jar.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@emotion/cache": "11.14.0",
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@mui/icons-material": "7.3.11",
+    "@mui/material": "7.3.11",
+    "@tanstack/react-query": "5.90.21",
+    "echarts": "6.0.0",
+    "i18next": "25.5.3",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "react-i18next": "15.7.4",
+    "stylis": "4.2.0",
+    "stylis-plugin-rtl": "2.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.7",
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11",
+    "@types/stylis": "4.2.7",
+    "@vitejs/plugin-react": "5.0.4",
+    "typescript": "5.9.3",
+    "vite": "7.1.12",
+    "vitest": "3.2.7"
+  }
+}

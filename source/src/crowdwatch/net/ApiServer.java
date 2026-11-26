@@ -1,6 +1,5 @@
 package crowdwatch.net;
 
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -181,7 +180,15 @@ public class ApiServer {
         }
         secure = tls != null;
         server.setExecutor(Executors.newFixedThreadPool(THREADS, r -> { Thread t = new Thread(r, "api"); t.setDaemon(true); return t; }));
-        server.createContext("/", this::handle);
+        server.createContext("/", hx -> {
+            Exchange ex = new Exchange(hx.getRequestMethod(), hx.getRequestURI().getPath(), hx.getRequestURI().getRawQuery(), hx.getRequestHeaders()::get,
+                hx.getRequestBody(), hx.getRemoteAddress().getAddress().getHostAddress(), hx instanceof com.sun.net.httpserver.HttpsExchange);
+            dispatch(ex);
+            for (String[] h : ex.replyHeaders) hx.getResponseHeaders().add(h[0], h[1]);
+            hx.sendResponseHeaders(ex.code, ex.replyBody.length == 0 ? -1 : ex.replyBody.length);
+            if (ex.replyBody.length > 0) try (OutputStream o = hx.getResponseBody()) { o.write(ex.replyBody); }
+            hx.close();
+        });
         server.start();
         return server.getAddress().getPort();
     }
@@ -204,16 +211,21 @@ public class ApiServer {
      * 200 if the operation succeeded, 422 if a rule refused it. Bad input gives 400 and an
      * unknown path 404, and a body over {@link #MAX_BODY} 413.
      */
-    private void handle(HttpExchange ex) throws IOException {
+    public void dispatch(Exchange ex) {
+        try { handle(ex); }
+        catch (IOException e) { send(ex, 400, "application/json", err("cannot read the request: " + e.getMessage())); }
+    }
+
+    private void handle(Exchange ex) throws IOException {
         int code;
         String type = "application/json", body;
         try {
-            String path = ex.getRequestURI().getPath();
-            String method = ex.getRequestMethod();
-            AVLTree<String, String> q = params(ex.getRequestURI().getRawQuery());
+            String path = ex.path;
+            String method = ex.method;
+            AVLTree<String, String> q = params(ex.rawQuery);
             if (method.equals("POST")) {
                 int limit = path.equals("/api/message") ? ApiExtras.MAX_MESSAGE_BODY : MAX_BODY;
-                byte[] raw = ex.getRequestBody().readNBytes(limit + 1);
+                byte[] raw = ex.body.readNBytes(limit + 1);
                 if (raw.length > limit) { send(ex, 413, type, err("request body larger than " + limit + " bytes")); return; }
                 AVLTree<String, String> form = params(new String(raw, StandardCharsets.UTF_8));
                 // merge the form body into the query parameters
@@ -224,7 +236,7 @@ public class ApiServer {
             Accounts acc = accounts;
             boolean open = apiKey == null && (acc == null || !acc.hasUsers());
             boolean control = open || (apiKey != null && apiKey.equals(given));
-            if (!control && limiter.tooMany(ex.getRemoteAddress().getAddress().getHostAddress())) { send(ex, 429, type, err("too many requests, slow down")); return; }
+            if (!control && limiter.tooMany(ex.remote)) { send(ex, 429, type, err("too many requests, slow down")); return; }
             Accounts.Who who = control ? SYSTEM : identify(acc, ex, given);
             extras.requests.incrementAndGet();
             if (endpoint.equals("GET /metrics")) {
@@ -247,12 +259,12 @@ public class ApiServer {
             if (endpoint.equals("POST /classic/login") || endpoint.equals("POST /classic/logout")) { classicSign(ex, acc, endpoint, q); return; }
             if (endpoint.equals("GET /classic") && who == null && acc != null && acc.hasUsers()) { send(ex, 200, "text/html; charset=utf-8", Dashboard.loginPage(q.search("msg"))); return; }
             if (ApiExtras.handles(endpoint)) {
-                ApiExtras.Reply rp = extras.handle(endpoint, q, who, header(ex, "Host"), ex instanceof com.sun.net.httpserver.HttpsExchange, ex.getRemoteAddress().getAddress().getHostAddress());
+                ApiExtras.Reply rp = extras.handle(endpoint, q, who, header(ex, "Host"), ex.secure, ex.remote);
                 if (method.equals("POST") && !endpoint.equals("POST /api/public/report") && !endpoint.equals("POST /api/password/reset"))
                     audit(who, endpoint, q, rp.code < 300, new String(rp.body, StandardCharsets.UTF_8).replaceAll(".*\"message\":\"([^\"]*)\".*", "$1"));
-                if (endpoint.equals("POST /api/public/report")) audit(new Accounts.Who("visitor " + ex.getRemoteAddress().getAddress().getHostAddress(), null, null), endpoint, q, rp.code < 300, "visitor report");
-                if (rp.file != null) ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + rp.file + "\"");
-                if (endpoint.equals("GET /api/photo")) ex.getResponseHeaders().set("Cache-Control", "private, max-age=600");
+                if (endpoint.equals("POST /api/public/report")) audit(new Accounts.Who("visitor " + ex.remote, null, null), endpoint, q, rp.code < 300, "visitor report");
+                if (rp.file != null) ex.set("Content-Disposition", "attachment; filename=\"" + rp.file + "\"");
+                if (endpoint.equals("GET /api/photo")) ex.set("Cache-Control", "private, max-age=600");
                 sendBytes(ex, rp.code, rp.type, rp.body);
                 return;
             }
@@ -267,14 +279,11 @@ public class ApiServer {
                 String imgType;
                 synchronized (m) { img = m.venue() == null ? null : m.venue().mapBytes(); imgType = m.venue() == null ? "" : m.venue().mapType(); }
                 if (img == null) { send(ex, 404, type, err("this venue has no map drawing")); return; }
-                ex.getResponseHeaders().set("Content-Type", imgType);
-                ex.getResponseHeaders().set("Cache-Control", "private, max-age=300");
-                ex.sendResponseHeaders(200, img.length);
-                try (OutputStream o = ex.getResponseBody()) { o.write(img); }
-                ex.close();
+                ex.set("Cache-Control", "private, max-age=300");
+                sendBytes(ex, 200, imgType, img);
                 return;
             }
-            String cacheKey = endpoint + "?" + ex.getRequestURI().getRawQuery();
+            String cacheKey = endpoint + "?" + ex.rawQuery;
             if (in(endpoint, CACHED)) {
                 String[] hit = cache.get(cacheKey);
                 if (hit != null) { send(ex, 200, hit[0], hit[1]); return; }
@@ -342,7 +351,7 @@ public class ApiServer {
                 }
             } } finally { turns.release(); }
             if (r != null && q.search("back") != null) {
-                ex.getResponseHeaders().add("Location", "/classic?msg=" + java.net.URLEncoder.encode((r.ok ? "OK: " : "REFUSED: ") + r.message, StandardCharsets.UTF_8));
+                ex.add("Location", "/classic?msg=" + java.net.URLEncoder.encode((r.ok ? "OK: " : "REFUSED: ") + r.message, StandardCharsets.UTF_8));
                 code = 303;
                 body = "";
                 type = "text/plain";
@@ -819,7 +828,7 @@ public class ApiServer {
     }
 
     /** @return the token of an {@code Authorization: Bearer} header, or null */
-    private static String bearer(HttpExchange ex) {
+    private static String bearer(Exchange ex) {
         String a = header(ex, "Authorization");
         return a != null && a.regionMatches(true, 0, "Bearer ", 0, 7) ? a.substring(7).trim() : null;
     }
@@ -828,8 +837,8 @@ public class ApiServer {
     static final String COOKIE = "cw_session";
 
     /** @return the value of a cookie, or null */
-    private static String cookie(HttpExchange ex, String name) {
-        for (String h : ex.getRequestHeaders().getOrDefault("Cookie", java.util.List.of()))
+    private static String cookie(Exchange ex, String name) {
+        for (String h : ex.headers("Cookie"))
             for (String part : h.split(";")) {
                 String t = part.trim();
                 if (t.startsWith(name + "=")) return t.substring(name.length() + 1);
@@ -841,23 +850,23 @@ public class ApiServer {
      * Sign-in and sign-out of the plain dashboard (no JavaScript needed): a form post that sets or
      * clears an HttpOnly, SameSite=Strict session cookie (Secure with HTTPS) and goes back to /classic.
      */
-    private void classicSign(HttpExchange ex, Accounts acc, String endpoint, AVLTree<String, String> q) throws IOException {
-        String flags = "; Path=/; HttpOnly; SameSite=Strict" + (ex instanceof com.sun.net.httpserver.HttpsExchange ? "; Secure" : "");
+    private void classicSign(Exchange ex, Accounts acc, String endpoint, AVLTree<String, String> q) throws IOException {
+        String flags = "; Path=/; HttpOnly; SameSite=Strict" + (ex.secure ? "; Secure" : "");
         String back = "/classic";
         if (endpoint.equals("POST /classic/logout")) {
             if (acc != null) acc.logout(cookie(ex, COOKIE));
-            ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=; Max-Age=0" + flags);
+            ex.add("Set-Cookie", COOKIE + "=; Max-Age=0" + flags);
         } else if (acc != null) {
             Accounts.Login in = acc.login(q.search("user"), q.search("password"), q.search("code"), m.now());
-            if (in.token != null) ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=" + in.token + "; Max-Age=" + Accounts.SESSION_HOURS * 3600 + flags);
+            if (in.token != null) ex.add("Set-Cookie", COOKIE + "=" + in.token + "; Max-Age=" + Accounts.SESSION_HOURS * 3600 + flags);
             else back = "/classic?msg=" + java.net.URLEncoder.encode(in.needCode ? "Enter the code from your authenticator app" : "Wrong user name or password, or the account is locked", StandardCharsets.UTF_8);
         }
-        ex.getResponseHeaders().add("Location", back);
+        ex.add("Location", back);
         send(ex, 303, "text/plain", "");
     }
 
     /** @return who is calling: a signed-in user, a scout device code, the scout key, or null */
-    private Accounts.Who identify(Accounts acc, HttpExchange ex, String given) {
+    private Accounts.Who identify(Accounts acc, Exchange ex, String given) {
         if (acc != null) {
             Accounts.Who w = acc.session(bearer(ex), m.now());
             if (w != null) return w;
@@ -920,7 +929,7 @@ public class ApiServer {
     }
 
     /** POST /api/login: user and password; replies with a session token, or 401. */
-    private void login(HttpExchange ex, Accounts acc, AVLTree<String, String> q) throws IOException {
+    private void login(Exchange ex, Accounts acc, AVLTree<String, String> q) throws IOException {
         String type = "application/json";
         if (acc == null || !acc.hasUsers()) { send(ex, 404, type, err("personal logins are not switched on for this server")); return; }
         Accounts.Login in = acc.login(q.search("user"), q.search("password"), q.search("code"), m.now());
@@ -1022,7 +1031,7 @@ public class ApiServer {
     }
 
     /** @return the first value of a request header, or null */
-    private static String header(HttpExchange ex, String name) { return ex.getRequestHeaders().getFirst(name); }
+    private static String header(Exchange ex, String name) { return ex.header(name); }
 
     /**
      * Parses URL-encoded parameters ({@code a=1&b=2}) into an AVL tree. A key without '=' gets an empty value.
@@ -1063,26 +1072,60 @@ public class ApiServer {
     private static String err(String msg) { return "{\"ok\":false,\"message\":" + str(msg) + "}"; }
 
     /**
-     * Sends the response. A 303 redirect has no body. CORS is open so other web pages can call the API.
+     * Stores the reply in the exchange. A 303 redirect has no body. CORS is open (for JSON and
+     * text replies) so other web pages can call the API.
      */
-    private static void sendBytes(HttpExchange ex, int code, String type, byte[] b) throws IOException {
-        if (ex instanceof com.sun.net.httpserver.HttpsExchange) ex.getResponseHeaders().set("Strict-Transport-Security", "max-age=31536000");
-        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-        ex.getResponseHeaders().set("Content-Type", type);
-        ex.sendResponseHeaders(code, b.length == 0 ? -1 : b.length);
-        if (b.length > 0) try (OutputStream o = ex.getResponseBody()) { o.write(b); }
-        ex.close();
+    private static void sendBytes(Exchange ex, int code, String type, byte[] b) {
+        if (ex.secure) ex.set("Strict-Transport-Security", "max-age=31536000");
+        ex.set("X-Content-Type-Options", "nosniff");
+        ex.set("Content-Type", type);
+        ex.code = code;
+        ex.replyBody = b;
     }
 
-    private static void send(HttpExchange ex, int code, String type, String body) throws IOException {
-        byte[] b = body.getBytes(StandardCharsets.UTF_8);
-        if (ex instanceof com.sun.net.httpserver.HttpsExchange) ex.getResponseHeaders().set("Strict-Transport-Security", "max-age=31536000");
-        ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-        ex.getResponseHeaders().set("Content-Type", type);
-        ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        ex.sendResponseHeaders(code, code == 303 ? -1 : b.length);
-        if (code != 303) try (OutputStream o = ex.getResponseBody()) { o.write(b); }
-        ex.close();
+    private static void send(Exchange ex, int code, String type, String body) {
+        ex.set("Access-Control-Allow-Origin", "*");
+        sendBytes(ex, code, type, code == 303 ? new byte[0] : body.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * One request and its reply, independent of the web server that received it. The JDK server
+     * of {@link #start} and the Spring Boot server ({@code crowdwatch.spring}) both build one,
+     * call {@link #dispatch}, then send {@link #code}, {@link #replyHeaders} and {@link #replyBody}.
+     */
+    public static final class Exchange {
+        final String method, path, rawQuery, remote;
+        final boolean secure;
+        final java.io.InputStream body;
+        private final java.util.function.Function<String, java.util.List<String>> requestHeaders;
+        /** Status code of the reply (set by {@link #dispatch}). */
+        public int code = 500;
+        /** Reply headers as name, value pairs, in order. */
+        public final java.util.List<String[]> replyHeaders = new java.util.ArrayList<>();
+        /** Reply body (empty for none). */
+        public byte[] replyBody = new byte[0];
+
+        /**
+         * @param method   GET or POST
+         * @param path     path without the query, e.g. /api/areas
+         * @param rawQuery query string still URL-encoded, or null
+         * @param headers  all values of a request header by name (null or empty if absent)
+         * @param body     the request body (read only for POST)
+         * @param remote   the caller's IP address (for the rate limit and the audit log)
+         * @param secure   true if the request came over HTTPS
+         */
+        public Exchange(String method, String path, String rawQuery, java.util.function.Function<String, java.util.List<String>> headers,
+                        java.io.InputStream body, String remote, boolean secure) {
+            this.method = method; this.path = path; this.rawQuery = rawQuery; this.requestHeaders = headers;
+            this.body = body == null ? java.io.InputStream.nullInputStream() : body; this.remote = remote; this.secure = secure;
+        }
+
+        java.util.List<String> headers(String name) { java.util.List<String> l = requestHeaders.apply(name); return l == null ? java.util.List.of() : l; }
+
+        String header(String name) { java.util.List<String> l = headers(name); return l.isEmpty() ? null : l.get(0); }
+
+        void set(String name, String value) { replyHeaders.removeIf(h -> h[0].equalsIgnoreCase(name)); replyHeaders.add(new String[] { name, value }); }
+
+        void add(String name, String value) { replyHeaders.add(new String[] { name, value }); }
+    }
 }

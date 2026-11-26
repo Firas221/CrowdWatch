@@ -13,6 +13,7 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 | Desktop console (JavaFX) | `program/run.bat` or `program/run.sh`, then choose Airport, Stadium, Umrah or a `.venue` file |
 | Users | `program/add-user.bat <name> <ROLE>` or `./add-user.sh` (roles OPERATOR, OFFICER, ADMIN; the first should be ADMIN) |
 | Server and web console | `program/run-server.bat` or `program/run-server.sh`, then open `http://<this-pc>:8080/` and sign in |
+| Server on Spring Boot, new React console (preview) | `program/run-spring.bat` or `program/run-spring.sh` (same arguments), then open `http://<this-pc>:8080/`; build it with `build-spring.bat` / `./build-spring.sh` (JDK 17+, Maven, Node.js 20+); see below |
 | HTTPS | add `--https`, or set `CROWDWATCH_HTTPS=1` before `run-server` |
 | Scout phones | `http://<server>:8080/scout` with the unit's device code |
 | Drill (training) | `program/run-drill.bat` or `./run-drill.sh airport 8081 ../examples/airport-fire.drill` |
@@ -39,11 +40,21 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 - Venue layouts: a drawing, area positions or outlines, exit flows, corridor capacities, lifts and fire zones. All sample venues include one; the Umrah layout is a schematic of the real mosques with estimated figures, not official data.
 - Apache Derby persistence with archive tables and daily backups.
 
+## Spring Boot and React (in progress)
+
+The web layer is moving to Spring Boot (back end) and React with TypeScript (front end), step by step. The Java core, the rules and the 141 tests are unchanged.
+
+- `server/`: Spring Boot program. It runs the same monitor, database and API as `--server`; requests go through `ApiServer.dispatch`, so sign-in, roles, device codes and the audit log work as before. New: changes are pushed to consoles over a WebSocket (`/ws`) instead of each browser asking every 3 seconds; HTTPS through Spring; security headers.
+- `web/`: React console (Vite, MUI, Apache ECharts, TanStack Query, react-i18next, English and Arabic). It has the overview, areas, incidents, units and alerts. The other views open in the classic console at `/legacy`. `npm run dev` serves it on port 5173 against a server on 8080.
+- Next steps: move the remaining views to React, move the endpoints from `ApiServer` to Spring controllers, then sign-in to Spring Security.
+
 ## Folders
 
 | Folder | Contents |
 |---|---|
 | `source/` | Java source (`source/src/crowdwatch/...`) and the Derby libraries |
+| `server/` | Spring Boot server (Maven) |
+| `web/` | React and TypeScript console (Vite) |
 | `program/` | Ready-to-run `CrowdWatch.jar`, run scripts and JavaFX for Windows, Linux and macOS |
 | `docs/` | Design and Integration Guide (PDF and Word) and the class diagram |
 | `examples/` | Template venue file explaining every line, its drawing, and a CSV of sample counts |
