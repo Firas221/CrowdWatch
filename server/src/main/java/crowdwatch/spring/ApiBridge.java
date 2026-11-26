@@ -15,9 +15,10 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Hands the CrowdWatch API to {@link ApiServer#dispatch}, so sign-in, roles, device codes, the
- * rate limit, the audit log and every rule work exactly as on the JDK server (and the existing
- * tests keep covering them). Endpoints move from here to their own Spring controllers step by step.
+ * Hands the rest of the CrowdWatch API to {@link ApiServer#dispatch}: the changes (which write
+ * the audit log and check that a device code acts only for its own unit), sign-in, scout phones,
+ * reports, photos and the pages. Spring Security has already identified the caller and checked
+ * the role ({@link SecurityConfig}); what the consoles read is served by {@link ConsoleController}.
  * <p>
  * The React console is served from {@code static/} ({@code /} and {@code /assets/...}); the
  * classic console stays available at {@code /legacy}.

@@ -54,6 +54,8 @@ public class ApiServer {
     // true when this server runs a drill (training, nothing saved)
     private volatile boolean drill;
     private final ApiExtras extras;
+    // what the consoles read (shared with the Spring Boot server's controllers)
+    private final ConsoleData data;
     // the caller when the control key is used (or the server is open): full rights
     private static final Accounts.Who SYSTEM = accountsWho("control key", Accounts.Role.ADMIN, null);
     // what each role may change (each role also has the rights of the roles below it); every signed-in user may read
@@ -127,6 +129,7 @@ public class ApiServer {
         this.scoutKey = scoutKey == null || scoutKey.isBlank() ? null : scoutKey;
         this.limiter = new RateLimiter(perSecond);
         this.extras = new ApiExtras(monitor, this);
+        this.data = new ConsoleData(monitor, () -> drill, () -> dataFolder);
     }
 
     /** Gives the server the venue's database, for reports, replay and data-protection requests. */
@@ -300,18 +303,18 @@ public class ApiServer {
                     case "GET /console.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("console.js"); }
                     case "GET /i18n.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("i18n.js"); }
                     case "GET /classic" -> { code = 200; type = "text/html; charset=utf-8"; body = Dashboard.page(m, apiKey != null && (who == null || who == SYSTEM), who != null && who != SYSTEM); }
-                    case "GET /api/overview" -> { code = 200; body = overview(); }
-                    case "GET /api/units" -> { code = 200; body = units(); }
-                    case "GET /api/incident" -> { code = 200; body = incident(num(q.search("id"))); }
-                    case "GET /api/venue" -> { code = 200; body = venue(); }
-                    case "GET /api/readings" -> { code = 200; body = readings(q.search("area")); }
-                    case "GET /api/evacuation" -> { code = 200; body = evacuation(q.search("zone")); }
+                    case "GET /api/overview" -> { code = 200; body = data.overview(); }
+                    case "GET /api/units" -> { code = 200; body = data.units(); }
+                    case "GET /api/incident" -> { code = 200; body = data.incident(num(q.search("id"))); }
+                    case "GET /api/venue" -> { code = 200; body = data.venue(); }
+                    case "GET /api/readings" -> { code = 200; body = data.readings(q.search("area")); }
+                    case "GET /api/evacuation" -> { code = 200; body = data.evacuation(q.search("zone")); }
                     case "POST /api/reassign" -> { code = 0; body = null; r = m.reassign(num(q.search("id")), q.search("unit"), q.search("reason")); }
                     case "POST /api/escalate" -> { code = 0; body = null; r = m.escalate(num(q.search("id"))); }
                     case "GET /health" -> { body = health(); code = body.contains("\"status\":\"fail\"") ? 503 : 200; }
-                    case "GET /api/lost" -> { code = 200; body = lost(); }
-                    case "GET /api/layout" -> { code = 200; body = layout(); }
-                    case "GET /api/announcements" -> { code = 200; body = announcements(); }
+                    case "GET /api/lost" -> { code = 200; body = data.lost(); }
+                    case "GET /api/layout" -> { code = 200; body = data.layout(); }
+                    case "GET /api/announcements" -> { code = 200; body = data.announcements(); }
                     case "GET /api/handover" -> { code = 200; type = "text/plain; charset=utf-8"; body = m.handoverReport(); }
                     case "POST /api/found" -> { code = 0; body = null; r = m.found(num(q.search("id")), q.search("area"), by(q)); }
                     case "POST /api/foundperson" -> { code = 0; body = null; r = m.foundPerson(q.search("area"), q.search("details"), q.search("contact"), by(q)); }
@@ -322,10 +325,10 @@ public class ApiServer {
                     case "POST /api/announcement" -> { code = 0; body = null; r = m.decideAnnouncement(num(q.search("id")), "approve".equals(q.search("decision")), q.search("officer")); }
                     case "POST /api/announce" -> { code = 0; body = null; r = m.announce(q.search("text"), q.search("officer")); }
                     case "GET /api/summary" -> { code = 200; type = "text/plain; charset=utf-8"; body = m.summary(); }
-                    case "GET /api/areas" -> { code = 200; body = areas(); }
-                    case "GET /api/incidents" -> { code = 200; body = incidents(); }
-                    case "GET /api/alerts" -> { code = 200; body = alerts(); }
-                    case "GET /api/route" -> { code = 200; body = route(q); }
+                    case "GET /api/areas" -> { code = 200; body = data.areas(); }
+                    case "GET /api/incidents" -> { code = 200; body = data.incidents(); }
+                    case "GET /api/alerts" -> { code = 200; body = data.alerts(); }
+                    case "GET /api/route" -> { code = 200; body = data.route(q.search("from"), q.search("to"), !"0".equals(q.search("avoid"))); }
                     case "POST /api/occupancy" -> { code = 0; body = null; r = q.search("delta") != null
                         ? m.adjustOccupancy(q.search("area"), num(q.search("delta")), source(q))
                         : m.updateOccupancy(q.search("area"), num(q.search("count")), source(q)); }
@@ -338,7 +341,7 @@ public class ApiServer {
                         if (q.search("battery") != null && q.search("battery").matches("\\d{1,3}")) m.battery(q.search("id"), Integer.parseInt(q.search("battery")));
                         body = unit(q.search("id"));
                     }
-                    case "GET /api/status" -> { code = 200; body = status(); }
+                    case "GET /api/status" -> { code = 200; body = data.status(); }
                     case "POST /api/ack" -> { code = 0; body = null; r = m.acknowledge(q.search("unit")); }
                     case "POST /api/sos" -> { code = 0; body = null; r = m.sos(q.search("area"), q.search("unit"), q.search("text")); }
                     case "POST /api/checkin" -> { code = 0; body = null; r = m.officerCheckIn(q.search("officer")); }
@@ -368,249 +371,6 @@ public class ApiServer {
             body = err(String.valueOf(e.getMessage()));
         }
         send(ex, code, type, body);
-    }
-
-    /** @return JSON array of areas (busiest first) with level, trend rate and minutes to CRITICAL */
-    private String areas() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Area a : m.areasByLoad()) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(str(a.id)).append(",\"name\":").append(str(a.name)).append(",\"sector\":").append(str(a.sector))
-              .append(",\"type\":").append(str(a.type)).append(",\"occupancy\":").append(a.occupancy).append(",\"capacity\":").append(a.capacity)
-              .append(",\"percent\":").append(a.percent()).append(",\"level\":").append(str(a.level.name()))
-              .append(",\"ratePerMinute\":").append(Math.round(m.ratePerMinute(a))).append(",\"minutesToCritical\":").append(m.minutesToCritical(a))
-              .append(",\"restricted\":").append(a.restricted).append(",\"evacuating\":").append(a.evacuating)
-              .append(",\"stale\":").append(a.staleSince != null).append(",\"suspect\":").append(str(a.suspect)).append(",\"flowHeld\":").append(a.flowHeld)
-              .append(",\"eventOffset\":").append(a.thresholdOffset)
-              .append(",\"size\":").append(Math.round(a.sizeM2)).append(",\"density\":").append(Math.round(a.density() * 10) / 10.0)
-              .append(",\"densityLevel\":").append(str(m.densityLevel(a).name())).append(",\"camera\":").append(str(m.venue() == null ? null : m.venue().cameraOf(a.id)))
-              .append(",\"unitsHere\":").append(crowdwatch.core.AutoRulesProbe.unitsAt(m, a.id)).append(",\"unitsWanted\":").append(crowdwatch.core.AutoRulesProbe.target(m, a.id)).append(",\"links\":[");
-            int k = 0;
-            for (crowdwatch.ds.Graph.Edge e : m.map().neighbours(m.map().indexOf(a.id))) sb.append(k++ > 0 ? "," : "").append(str(m.map().name(e.to)));
-            sb.append("]}");
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return JSON array of open incidents by priority */
-    private String incidents() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Incident i : m.openIncidentsByPriority()) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(i.id).append(",\"category\":").append(str(i.category.code)).append(",\"priority\":").append(str(i.priority.name()))
-              .append(",\"area\":").append(str(i.area.id)).append(",\"status\":").append(str(i.status.name())).append(",\"unit\":").append(i.unitId == null ? "null" : str(i.unitId))
-              .append(",\"minutesOpen\":").append(i.minutesOpen(m.now())).append(",\"label\":").append(str(i.category.label))
-              .append(",\"reported\":").append(str(i.reported.format(HistoryEntry.FORMAT))).append(",\"automatic\":").append(i.automatic)
-              .append(",\"review\":").append(i.automatic && i.reviewedBy == null).append(",\"device\":").append(str(deviceText(i)))
-              .append(",\"acknowledged\":").append(i.acknowledged != null || i.status == IncidentStatus.ON_SCENE).append(",\"reminders\":").append(i.reminders)
-              .append(",\"lost\":").append(i.lostCase()).append(",\"found\":").append(str(i.foundWhere)).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return what the assigned unit's device has done with an incident, in words */
-    static String deviceText(Incident i) {
-        if (!i.open()) return "closed";
-        if (i.unitId == null) return "waiting in the " + i.priority + " queue";
-        if (i.status == IncidentStatus.ON_SCENE) return "on scene";
-        if (i.acknowledged != null) return "acknowledged";
-        return i.reminders > 0 ? "not acknowledged - reminder sent" : "sent, not yet acknowledged";
-    }
-
-    /** @return true if a unit's device has been in contact within the last 30 seconds */
-    private boolean online(Unit u) {
-        return u.lastContact != null && java.time.Duration.between(u.lastContact, m.now()).getSeconds() < crowdwatch.core.ConsoleRelay.DEVICE_ONLINE_SECONDS;
-    }
-
-    /**
-     * Everything the console's overview needs in one reply: people and capacity, areas per level,
-     * open incidents per priority, units per status and devices online, officer, automation,
-     * dispatches awaiting review, evacuation and the archive count.
-     */
-    private String overview() {
-        int people = 0, cap = 0, open = 0, waiting = m.waitingCount(), unack = 0, online = 0;
-        int[] lv = new int[4], pr = new int[4], us = new int[4];
-        for (Area a : m.areaTree().inOrder()) { people += a.occupancy; cap += a.capacity; lv[a.level.ordinal()]++; }
-        for (Incident i : m.openIncidentsByPriority()) {
-            open++; pr[i.priority.ordinal()]++;
-            if (i.status == IncidentStatus.ASSIGNED && i.acknowledged == null) unack++;
-        }
-        for (Unit u : m.unitTree().inOrder()) { us[u.status.ordinal()]++; if (online(u)) online++; }
-        VenueProfile v = m.venue();
-        String rule = v == null || v.autoCategory == null ? null : v.autoCategory + " at " + v.autoLevel + (v.autoOnTrend ? " or TREND" : "");
-        return "{\"venue\":" + str(m.venueName()) + ",\"code\":" + str(v == null ? "" : v.code) + ",\"now\":" + str(m.now().toLocalTime().withNano(0).toString())
-            + ",\"people\":" + people + ",\"capacity\":" + cap + ",\"areas\":" + m.areaTree().size()
-            + ",\"levels\":{\"LOW\":" + lv[0] + ",\"MODERATE\":" + lv[1] + ",\"HIGH\":" + lv[2] + ",\"CRITICAL\":" + lv[3] + "}"
-            + ",\"incidents\":{\"open\":" + open + ",\"CRITICAL\":" + pr[0] + ",\"HIGH\":" + pr[1] + ",\"NORMAL\":" + pr[2] + ",\"LOW\":" + pr[3]
-            + ",\"waiting\":" + waiting + ",\"unacknowledged\":" + unack + "}"
-            + ",\"units\":{\"total\":" + m.unitTree().size() + ",\"AVAILABLE\":" + us[0] + ",\"BUSY\":" + us[1] + ",\"OFF_DUTY\":" + us[2] + ",\"UNREACHABLE\":" + us[3] + ",\"online\":" + online + "}"
-            + ",\"review\":" + m.awaitingReview().length + ",\"automation\":" + m.automation() + ",\"autoRule\":" + str(rule)
-            + ",\"officer\":" + str(m.officer()) + ",\"officerStatus\":" + str(m.officerStatus()) + ",\"overdue\":" + (m.officer() == null || m.officerStatus().contains("OVERDUE"))
-            + ",\"evacuation\":" + str(m.evacuationZone()) + ",\"archived\":" + m.archivedCount()
-            + ",\"proposal\":" + proposalJson() + ",\"signs\":" + m.pendingAnnouncements().length + ",\"stale\":" + staleCount()
-            + ",\"lost\":" + missingCount() + ",\"events\":" + list(m.activeEvents()) + ",\"countCheck\":" + countCheckJson()
-            + ",\"drill\":" + drill + ",\"heat\":" + heatJson() + ",\"sites\":" + (dataFolder != null && java.nio.file.Files.exists(dataFolder.resolve("sites.txt"))) + "}";
-    }
-
-    /** @return the weather and heat stress as JSON, or null without a recent reading */
-    private String heatJson() {
-        double[] w = m.records.weatherNow(m.now());
-        if (w == null) return "null";
-        return "{\"temp\":" + Math.round(w[0] * 10) / 10.0 + ",\"humidity\":" + Math.round(w[1]) + ",\"index\":" + Math.round(w[2]) + ",\"band\":" + str(m.records.heatBandNow(m.now()))
-            + ",\"outdoor\":" + list(toList(m.outdoorAreas())) + "}";
-    }
-
-    private static LinkedList<String> toList(String[] a) {
-        LinkedList<String> l = new LinkedList<>();
-        for (String x : a) l.addLast(x);
-        return l;
-    }
-
-    /** @return the count check as JSON {expected, counted, difference, ok}, or null if gates are not counted */
-    private String countCheckJson() {
-        long[] c = m.countCheck();
-        if (c == null) return "null";
-        long allowed = Math.max(50, Math.abs(c[0]) * Math.max(0, m.venue().reconcilePercent) / 100);
-        return "{\"expected\":" + c[0] + ",\"counted\":" + c[1] + ",\"difference\":" + c[2] + ",\"ok\":" + (m.venue().reconcilePercent <= 0 || Math.abs(c[2]) <= allowed) + "}";
-    }
-
-    /** @return JSON array of units with status, current task and whether the device is online */
-    private String units() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Unit u : m.unitsSorted()) {
-            if (sb.length() > 1) sb.append(',');
-            Incident t = m.activeIncident(u.id);
-            sb.append("{\"id\":").append(str(u.id)).append(",\"name\":").append(str(u.name)).append(",\"area\":").append(str(u.area.id))
-              .append(",\"sector\":").append(str(u.area.sector)).append(",\"status\":").append(str(u.status.name()))
-              .append(",\"skills\":").append(str(u.skillList())).append(",\"online\":").append(online(u)).append(",\"battery\":").append(u.battery)
-              .append(",\"shift\":").append(str(u.shift)).append(",\"staged\":").append(str(u.stagedFor)).append(",\"reinforcing\":").append(str(u.reinforcing)).append(",\"home\":").append(str(u.home))
-              .append(",\"lastContact\":").append(u.lastContact == null ? "null" : str(u.lastContact.format(HistoryEntry.FORMAT)))
-              .append(",\"task\":").append(t == null ? "null" : "{\"id\":" + t.id + ",\"label\":" + str(t.category.label) + ",\"area\":" + str(t.area.id)
-                  + ",\"priority\":" + str(t.priority.name()) + ",\"device\":" + str(deviceText(t)) + "}")
-              .append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return one incident with its details, unit route and history; {"ok":false} if it is not in memory */
-    private String incident(int id) {
-        Incident i = m.findIncident(id);
-        if (i == null) return err("no incident I" + id + " in memory (it may be archived)");
-        Unit u = i.unitId == null ? null : m.findUnit(i.unitId);
-        String route = "-";
-        if (u != null) {
-            CrowdMonitor.Route r = m.responderRoute(u.area.id, i.area.id);
-            route = u.area == i.area ? "the unit is there" : r.found() ? r.path + " (" + r.walk + " min)" : "no route - ask the control room";
-        }
-        StringBuilder h = new StringBuilder("[");
-        for (HistoryEntry e : i.history) h.append(h.length() > 1 ? "," : "").append("{\"t\":").append(str(e.time.format(HistoryEntry.FORMAT))).append(",\"text\":").append(str(e.text)).append('}');
-        return "{\"ok\":true,\"id\":" + i.id + ",\"category\":" + str(i.category.code) + ",\"label\":" + str(i.category.label) + ",\"priority\":" + str(i.priority.name())
-            + ",\"area\":" + str(i.area.id) + ",\"areaName\":" + str(i.area.name) + ",\"status\":" + str(i.status.name()) + ",\"unit\":" + str(i.unitId)
-            + ",\"reported\":" + str(i.reported.format(HistoryEntry.FORMAT)) + ",\"details\":" + str(i.details) + ",\"contact\":" + str(i.contact)
-            + ",\"language\":" + str(i.language) + ",\"automatic\":" + i.automatic + ",\"reviewedBy\":" + str(i.reviewedBy) + ",\"open\":" + i.open()
-            + ",\"device\":" + str(deviceText(i)) + ",\"route\":" + str(route)
-            + ",\"lost\":" + i.lostCase() + ",\"foundWhere\":" + str(i.foundWhere) + ",\"foundBy\":" + str(i.foundBy) + ",\"search\":" + list(m.searchAreas(i))
-            + ",\"meeting\":" + str(m.meetingFor(i.area.id)) + ",\"history\":" + h + "]}";
-    }
-
-    /** @return the venue's settings, categories, sectors and areas (for forms and the settings view) */
-    private String venue() {
-        VenueProfile v = m.venue();
-        int[] t = m.thresholds();
-        StringBuilder cats = new StringBuilder("["), sectors = new StringBuilder("["), ids = new StringBuilder("["), exits = new StringBuilder("[");
-        for (Category c : m.categoryTree().inOrder()) cats.append(cats.length() > 1 ? "," : "").append("{\"code\":").append(str(c.code)).append(",\"label\":").append(str(c.label)).append(",\"priority\":").append(str(c.priority.name())).append(",\"skill\":").append(str(c.skill)).append('}');
-        crowdwatch.ds.LinkedList<String> seen = new crowdwatch.ds.LinkedList<>();
-        for (Area a : m.areaTree().inOrder()) {
-            ids.append(ids.length() > 1 ? "," : "").append(str(a.id));
-            if (!seen.contains(a.sector)) { seen.addLast(a.sector); sectors.append(sectors.length() > 1 ? "," : "").append(str(a.sector)); }
-        }
-        for (String e : v.exits) exits.append(exits.length() > 1 ? "," : "").append(str(e));
-        return "{\"name\":" + str(v.name) + ",\"code\":" + str(v.code) + ",\"thresholds\":[" + t[0] + "," + t[1] + "," + t[2] + "]"
-            + ",\"auto\":" + (v.autoCategory == null ? "null" : "{\"category\":" + str(v.autoCategory) + ",\"level\":" + str(v.autoLevel) + ",\"trend\":" + v.autoOnTrend + "}")
-            + ",\"supervisionMinutes\":" + v.supervisionMinutes + ",\"ackMinutes\":" + v.ackMinutes + ",\"archiveMinutes\":" + v.archiveMinutes
-            + ",\"gateway\":" + (v.gateway != null) + ",\"automation\":" + m.automation()
-            + ",\"exits\":" + exits + "],\"categories\":" + cats + "],\"sectors\":" + sectors + "],\"areas\":" + ids + "],\"fireZones\":" + fireZoneList(v)
-            + ",\"rules\":{\"stale\":" + v.staleMinutes + ",\"jump\":" + v.jumpPercent + ",\"onscene\":" + v.onSceneMinutes + ",\"autoclose\":" + v.autoCloseMinutes
-            + ",\"maxwait\":" + v.maxWaitMinutes + ",\"preposition\":" + v.prepositionMinutes + ",\"holdflow\":" + v.holdFlow + ",\"cover\":" + v.coverSectors
-            + ",\"propose\":" + v.proposeMinutes + ",\"signs\":" + v.signs + ",\"reinforceHigh\":" + v.reinforceHigh + ",\"reinforceCritical\":" + v.reinforceCritical
-            + ",\"reinforceHold\":" + v.reinforceHold + ",\"reinforceMax\":" + v.reinforceMax + ",\"reinforceSkills\":" + list(v.reinforceSkills) + ",\"meeting\":" + str(v.meetingPoint) + ",\"lostRadius\":" + v.lostRadius + ",\"lostWiden\":" + v.lostWiden
-            + ",\"events\":" + eventsJson(v) + ",\"shifts\":" + list(v.shiftChanges) + "}}";
-    }
-
-    /** @return names of the venue's fire zones as a JSON array */
-    private static String fireZoneList(VenueProfile v) {
-        StringBuilder sb = new StringBuilder("[");
-        for (String[] z : v.fireZones) sb.append(sb.length() > 1 ? "," : "").append(str(z[0]));
-        return sb.append(']').toString();
-    }
-
-    /** @return the venue's scheduled events as JSON */
-    private static String eventsJson(VenueProfile v) {
-        StringBuilder sb = new StringBuilder("[");
-        for (String[] e : v.events) sb.append(sb.length() > 1 ? "," : "").append("{\"time\":").append(str(e[0])).append(",\"minutes\":").append(e[1])
-            .append(",\"zone\":").append(str(e[2])).append(",\"name\":").append(str(e[3])).append('}');
-        return sb.append(']').toString();
-    }
-
-    /** @return the sampled readings of one area: seconds ago and people counted */
-    private String readings(String id) {
-        Area a = m.findArea(id);
-        if (a == null) return err("unknown area " + id);
-        StringBuilder sb = new StringBuilder("{\"ok\":true,\"area\":" + str(a.id) + ",\"capacity\":" + a.capacity + ",\"readings\":[");
-        for (int k = 0; k < a.readings.size(); k++) {
-            Reading r = a.readings.get(k);
-            sb.append(k > 0 ? "," : "").append("{\"s\":").append(java.time.Duration.between(r.time, m.now()).getSeconds()).append(",\"n\":").append(r.occupancy).append('}');
-        }
-        return sb.append("]}").toString();
-    }
-
-    /** @return the evacuation in progress with its plan, or a preview of the plan for {@code zone} */
-    private String evacuation(String zone) {
-        StringBuilder sb = new StringBuilder("{\"active\":" + str(m.evacuationZone()) + ",\"zone\":" + str(m.evacuationZone() != null ? m.evacuationZone() : zone) + ",\"rows\":[");
-        int k = 0;
-        for (String[] r : m.evacuationRows(zone)) {
-            sb.append(k++ > 0 ? "," : "").append("{\"from\":").append(str(r[0])).append(",\"exit\":").append(str(r[1])).append(",\"path\":").append(str(r[2]))
-              .append(",\"min\":").append(str(r[3])).append(",\"inZone\":").append("zone".equals(r[4]))
-              .append(",\"people\":").append(str(r[5])).append(",\"clear\":").append(str(r[6])).append('}');
-        }
-        return sb.append("],\"clearMinutes\":").append(clearAfter(zone)).append('}').toString();
-    }
-
-    /** @return estimated minutes to clear for the plan just listed (the live one, or the preview worked out by evacuationRows) */
-    private int clearAfter(String zone) {
-        int worst = 0;
-        for (String[] r : m.evacuationRows(zone)) if ("zone".equals(r[4]) && r[6] != null && r[6].matches("\\d+") && m.evacuationClearMinutesKnown()) worst = Math.max(worst, Integer.parseInt(r[6]));
-        return worst;
-    }
-
-    /**
-     * @return the venue layout as JSON: drawing size, each area's position and crowd level, exits with their
-     *         flow, links with capacity and lifts, fire zones; "map" is false when the venue has no layout
-     */
-    private String layout() {
-        VenueProfile v = m.venue();
-        if (v == null || v.positions.isEmpty()) return "{\"map\":false}";
-        StringBuilder sb = new StringBuilder("{\"map\":true,\"image\":").append(v.mapFile != null && v.mapBytes() != null).append(",\"w\":").append(v.mapWidth).append(",\"h\":").append(v.mapHeight)
-            .append(",\"scale\":").append(v.scale).append(",\"areas\":[");
-        int k = 0;
-        for (String[] p : v.positions) {
-            Area a = m.findArea(p[0]);
-            if (a == null) continue;
-            String shape = v.shapeOf(a.id);
-            sb.append(k++ > 0 ? "," : "").append("{\"id\":").append(str(a.id)).append(shape == null ? "" : ",\"shape\":[" + shape.trim().replace(' ', ',') + "]").append(",\"x\":").append(p[1]).append(",\"y\":").append(p[2]).append(",\"w\":").append(p[3]).append(",\"h\":").append(p[4])
-              .append(",\"level\":").append(str(a.level.name())).append(",\"pct\":").append(a.percent()).append(",\"restricted\":").append(a.restricted).append(",\"evacuating\":").append(a.evacuating)
-              .append(",\"exit\":").append(v.exits.contains(a.id)).append(",\"flow\":").append(m.exitFlow(a.id)).append(",\"zone\":").append(str(m.fireZoneOf(a.id))).append('}');
-        }
-        sb.append("],\"links\":[");
-        k = 0;
-        for (String[] l : v.links) {
-            sb.append(k++ > 0 ? "," : "").append("{\"a\":").append(str(l[0].toUpperCase())).append(",\"b\":").append(str(l[1].toUpperCase()))
-              .append(",\"capacity\":").append(m.linkCapacity(l[0], l[1])).append(",\"lift\":").append(m.isLift(l[0], l[1])).append('}');
-        }
-        sb.append("],\"zones\":[");
-        k = 0;
-        for (String[] z : v.fireZones) sb.append(k++ > 0 ? "," : "").append(str(z[0]));
-        return sb.append("]}").toString();
     }
 
     // console page files, loaded once from the jar (crowdwatch/net/web/)
@@ -674,62 +434,6 @@ public class ApiServer {
         return o != null && !o.isBlank() ? o : q.search("unit");
     }
 
-    /** @return the evacuation proposal as JSON, or null */
-    private String proposalJson() {
-        String[] p = m.proposal();
-        return p == null ? "null" : "{\"zone\":" + str(p[0]) + ",\"reason\":" + str(p[1]) + ",\"time\":" + str(p[2]) + "}";
-    }
-
-    /** @return number of areas whose sensor data is stale or suspect */
-    private int staleCount() {
-        int n = 0;
-        for (Area a : m.areaTree().inOrder()) if (a.staleSince != null || a.suspect != null) n++;
-        return n;
-    }
-
-    /** @return open lost-person cases where the person is still missing */
-    private int missingCount() {
-        int n = 0;
-        for (Incident i : m.lostCases()) if (i.foundAt == null) n++;
-        return n;
-    }
-
-    /** @return a JSON array of strings */
-    private static String list(crowdwatch.ds.LinkedList<String> l) {
-        StringBuilder sb = new StringBuilder("[");
-        for (String s : l) sb.append(sb.length() > 1 ? "," : "").append(str(s));
-        return sb.append(']').toString();
-    }
-
-    /** @return open lost-person cases with their search areas and found state */
-    private String lost() {
-        StringBuilder sb = new StringBuilder("[");
-        for (Incident i : m.lostCases()) {
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(i.id).append(",\"details\":").append(str(i.details)).append(",\"area\":").append(str(i.area.id))
-              .append(",\"areaName\":").append(str(i.area.name)).append(",\"priority\":").append(str(i.priority.name())).append(",\"status\":").append(str(i.status.name()))
-              .append(",\"unit\":").append(str(i.unitId)).append(",\"minutes\":").append(i.minutesOpen(m.now())).append(",\"reported\":").append(str(i.reported.format(HistoryEntry.FORMAT)))
-              .append(",\"contact\":").append(str(i.contact)).append(",\"language\":").append(str(i.language))
-              .append(",\"found\":").append(i.foundAt != null).append(",\"foundWhere\":").append(str(i.foundWhere)).append(",\"foundBy\":").append(str(i.foundBy))
-              .append(",\"search\":").append(list(m.searchAreas(i))).append(",\"radius\":").append(i.searchMinutes)
-              .append(",\"meeting\":").append(str(m.meetingFor(i.area.id))).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /** @return public messages: drafts awaiting a decision first, then the latest decided ones */
-    private String announcements() {
-        StringBuilder sb = new StringBuilder("[");
-        int k = 0;
-        for (crowdwatch.core.AutoRules.Announcement a : m.announcements()) {
-            if (k++ == 30) break;
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"id\":").append(a.id).append(",\"time\":").append(str(a.time.format(HistoryEntry.FORMAT))).append(",\"ref\":").append(str(a.ref))
-              .append(",\"text\":").append(str(a.text)).append(",\"status\":").append(str(a.status)).append(",\"by\":").append(str(a.decidedBy)).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
     /**
      * Health check for monitoring tools (no key needed, no venue data): "ok", "degraded" with the
      * reasons, or "fail" (HTTP 503) when no venue is loaded or saving has stopped for 5 minutes.
@@ -740,7 +444,7 @@ public class ApiServer {
         if (fail) problems.addLast("no venue loaded");
         else {
             if (m.officer() == null || m.officerStatus().contains("OVERDUE")) problems.addLast("officer check-in overdue");
-            int stale = staleCount();
+            int stale = data.staleCount();
             if (stale > 0) problems.addLast(stale + " area(s) with stale or suspect sensor data");
             int unreachable = 0;
             for (Unit u : m.unitTree().inOrder()) if (u.status == crowdwatch.model.Enums.UnitStatus.UNREACHABLE) unreachable++;
@@ -749,22 +453,8 @@ public class ApiServer {
             java.time.LocalDateTime saved = m.lastSaved();
             if (saved != null && java.time.Duration.between(saved, m.now()).toMinutes() >= 5) { fail = true; problems.addLast("not saved for " + java.time.Duration.between(saved, m.now()).toMinutes() + " min"); }
         }
-        return "{\"status\":" + str(fail ? "fail" : problems.isEmpty() ? "ok" : "degraded") + ",\"problems\":" + list(problems)
+        return "{\"status\":" + str(fail ? "fail" : problems.isEmpty() ? "ok" : "degraded") + ",\"problems\":" + ConsoleData.list(problems)
             + ",\"time\":" + str(m.now().withNano(0).toString()) + ",\"lastSaved\":" + str(m.lastSaved() == null ? null : m.lastSaved().withNano(0).toString()) + "}";
-    }
-
-    /** @return JSON for the control room: automation, officer, incidents awaiting review, evacuation and its plan */
-    private String status() {
-        StringBuilder sb = new StringBuilder("{\"automation\":").append(m.automation()).append(",\"officer\":").append(str(m.officerStatus()))
-            .append(",\"overdue\":").append(m.officerStatus().contains("OVERDUE") || m.officer() == null).append(",\"review\":[");
-        Incident[] rv = m.awaitingReview();
-        for (int k = 0; k < rv.length; k++)
-            sb.append(k > 0 ? "," : "").append("{\"id\":").append(rv[k].id).append(",\"area\":").append(str(rv[k].area.id))
-              .append(",\"details\":").append(str(rv[k].details)).append(",\"unit\":").append(rv[k].unitId == null ? "null" : str(rv[k].unitId)).append('}');
-        sb.append("],\"evacuation\":").append(str(m.evacuationZone())).append(",\"plan\":[");
-        int k = 0;
-        for (String line : m.evacuationPlan()) sb.append(k++ > 0 ? "," : "").append(str(line));
-        return sb.append("]}").toString();
     }
 
     /** POST /api/automation: on=1 or on=0, with the officer's name (counts as a check-in). */
@@ -774,30 +464,6 @@ public class ApiServer {
         boolean on = !"0".equals(q.search("on"));
         m.setAutomation(on);
         return Result.ok("Automatic dispatch switched " + (on ? "ON" : "OFF") + " by " + m.officer() + ".");
-    }
-
-    /** @return JSON array of the 50 newest alerts */
-    private String alerts() {
-        StringBuilder sb = new StringBuilder("[");
-        int n = 0;
-        for (Alert a : m.alerts()) {
-            if (n++ == 50) break;
-            if (sb.length() > 1) sb.append(',');
-            sb.append("{\"time\":").append(str(a.time.toString())).append(",\"kind\":").append(str(a.kind.name())).append(",\"ref\":").append(str(a.ref)).append(",\"text\":").append(str(a.text)).append('}');
-        }
-        return sb.append(']').toString();
-    }
-
-    /**
-     * @param q parameters from, to and avoid (avoid=0 gives the shortest walk; anything else the crowd-aware route)
-     * @return JSON with found, walkMinutes and path
-     */
-    private String route(AVLTree<String, String> q) {
-        CrowdMonitor.Route r = m.route(q.search("from"), q.search("to"), !"0".equals(q.search("avoid")));
-        StringBuilder sb = new StringBuilder("{\"found\":").append(r.found()).append(",\"walkMinutes\":").append(r.found() ? r.walk : -1).append(",\"path\":[");
-        int i = 0;
-        for (String s : r.path) sb.append(i++ > 0 ? "," : "").append(str(s));
-        return sb.append("]}").toString();
     }
 
     /** @return the source parameter as an enum, SENSOR if missing */
@@ -976,6 +642,32 @@ public class ApiServer {
         audit(who, endpoint, params(params), false, reason);
     }
 
+    /**
+     * A console read for the Spring Boot server's controllers, handled as this server handles it:
+     * from the half-second cache (shared with this server), or built while holding the monitor's
+     * lock, taking fair turns with the other requests. Rights are checked before (Spring Security).
+     *
+     * @param endpoint e.g. "GET /api/areas"
+     * @param rawQuery the query as received, or null (part of the cache key)
+     * @param type     content type of the reply (kept with a cached reply)
+     * @param build    builds the reply from the console data
+     * @return the reply body
+     */
+    public String read(String endpoint, String rawQuery, String type, java.util.function.Function<ConsoleData, String> build) {
+        extras.requests.incrementAndGet();
+        String key = endpoint + "?" + rawQuery;
+        boolean cached = in(endpoint, CACHED);
+        if (cached) {
+            String[] hit = cache.get(key);
+            if (hit != null) return hit[1];
+        }
+        String body;
+        turns.acquireUninterruptibly();
+        try { synchronized (m) { body = build.apply(data); } } finally { turns.release(); }
+        if (cached) cache.put(key, type, body);
+        return body;
+    }
+
     /** JSON error body, as every endpoint gives it. */
     public static String errorJson(String message) { return err(message); }
 
@@ -1133,7 +825,7 @@ public class ApiServer {
     }
 
     /** @return a JSON error object */
-    private static String err(String msg) { return "{\"ok\":false,\"message\":" + str(msg) + "}"; }
+    static String err(String msg) { return "{\"ok\":false,\"message\":" + str(msg) + "}"; }
 
     /**
      * Stores the reply in the exchange. A 303 redirect has no body. CORS is open (for JSON and

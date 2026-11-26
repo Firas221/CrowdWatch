@@ -40,13 +40,16 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 - Venue layouts: a drawing, area positions or outlines, exit flows, corridor capacities, lifts and fire zones. All sample venues include one; the Umrah layout is a schematic of the real mosques with estimated figures, not official data.
 - Apache Derby persistence with archive tables and daily backups.
 
-## Spring Boot and React (in progress)
+## Spring Boot and React
 
-The web layer is moving to Spring Boot (back end) and React with TypeScript (front end), step by step. The Java core, the rules and the 141 tests are unchanged.
+The web layer runs on Spring Boot (back end) and React with TypeScript (front end). The Java core, the rules and the 141 tests are unchanged; the JDK server (`--server`) still works.
 
-- `server/`: Spring Boot program. It runs the same monitor, database and API as `--server`; requests go through `ApiServer.dispatch`, so sign-in, roles, device codes and the audit log work as before. New: changes are pushed to consoles over a WebSocket (`/ws`) instead of each browser asking every 3 seconds; HTTPS through Spring; security headers.
-- `web/`: React console (Vite, MUI, Apache ECharts, TanStack Query, react-i18next, English and Arabic). It has the overview, areas, incidents, units and alerts. The other views open in the classic console at `/legacy`. `npm run dev` serves it on port 5173 against a server on 8080.
-- Next steps: move the remaining views to React, move the endpoints from `ApiServer` to Spring controllers, then sign-in to Spring Security.
+- `server/`: Spring Boot program. It runs the same monitor, database and accounts as `--server`.
+  - **Spring Security** identifies every request with CrowdWatch's accounts (session token, dashboard cookie, control key, scout key, device code) and checks each endpoint's role before any code runs, using the same role table as the API (`ApiServer.refusal`). Refused changes go to the audit log; requests without the control key are rate-limited. Passwords, two-step codes, lockout and LDAP stay in `Accounts`.
+  - **Spring controllers** serve what the consoles read (`ConsoleController`: overview, areas, incidents, units, alerts, venue, layout, lost persons, public messages, incident, readings, evacuation, status, route, summary, handover), from `ConsoleData`, the same code the JDK server uses. Changes go through `ApiBridge` to the API, which writes the audit log and checks that a device code acts only for its own unit.
+  - **Live updates**: changes are pushed over a WebSocket (`/ws`) instead of each browser asking every 3 seconds.
+- `web/`: React console (Vite, MUI, Apache ECharts, TanStack Query, react-i18next, English and Arabic) with every view: overview with the venue map, areas, incidents (with messages and photos), units, lost persons, SOS and evacuation, alerts, reports, replay, sites, venue editor and venue settings (users, two-step sign-in, device codes, audit log, personal-data requests). `npm run dev` serves it on port 5173 against a server on 8080. The classic console stays at `/legacy`, the plain dashboard at `/classic`.
+- Build: `download-dependencies` once, then `build-spring` (JDK 17+ and Node.js 20+; Maven comes with `server/mvnw`). Run: `program/run-spring`.
 
 ## Folders
 

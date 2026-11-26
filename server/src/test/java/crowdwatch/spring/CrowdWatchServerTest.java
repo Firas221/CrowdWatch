@@ -112,4 +112,33 @@ class CrowdWatchServerTest {
             ws.sendClose(WebSocket.NORMAL_CLOSURE, "done");
         }
     }
+
+    @Test
+    void consoleReadsAreSpringEndpoints() throws Exception {
+        org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping mappings =
+            ctx.getBean("requestMappingHandlerMapping", org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class);
+        java.util.Set<String> served = new java.util.HashSet<>();
+        mappings.getHandlerMethods().forEach((info, method) -> {
+            if (method.getBeanType() == ConsoleController.class) served.addAll(info.getPatternValues());
+        });
+        for (String p : new String[] { "/api/overview", "/api/areas", "/api/incidents", "/api/units", "/api/alerts", "/api/venue", "/api/layout",
+            "/api/lost", "/api/announcements", "/api/status", "/api/incident", "/api/readings", "/api/evacuation", "/api/route", "/api/summary", "/api/handover" })
+            assertTrue(served.contains(p), p + " is not a Spring endpoint");
+    }
+
+    @Test
+    void consoleReadsBehaveAsBefore() throws Exception {
+        HttpResponse<String> bad = get("/api/incident?id=abc", true);
+        assertEquals(400, bad.statusCode());
+        assertTrue(bad.body().startsWith("{\"ok\":false"), bad.body());
+        HttpResponse<String> gone = get("/api/incident?id=I999999", true);
+        assertEquals(200, gone.statusCode());
+        assertTrue(gone.body().contains("may be archived"), gone.body());
+        HttpResponse<String> summary = get("/api/summary", true);
+        assertTrue(summary.headers().firstValue("Content-Type").orElse("").startsWith("text/plain"), summary.headers().toString());
+        assertEquals("*", get("/api/areas", true).headers().firstValue("Access-Control-Allow-Origin").orElse(""));
+        HttpResponse<String> route = get("/api/route?from=CHECKIN-1&to=GATE-A&avoid=0", true);
+        assertTrue(route.body().startsWith("{\"found\":true"), route.body());
+        assertEquals(401, get("/api/overview", false).statusCode(), "Spring Security still guards the moved endpoints");
+    }
 }
