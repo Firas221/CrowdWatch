@@ -193,16 +193,21 @@ public class App {
         if (accounts.hasUsers()) System.out.println("Personal logins are on: " + accounts.users().length + " user(s). Every change is written to the audit log.");
         else if (args.length < 4 || args[3].isBlank()) System.out.println("WARNING: no users and no control key - anyone on the network can read and change everything. Add users with: java -jar CrowdWatch.jar --user <name> <ROLE>");
         if (db != null && Database.backupCopyFolder() != null) System.out.println("Daily backups are also copied to " + Database.backupCopyFolder().getAbsolutePath());
-        if (db != null) System.out.println("Saved every " + AUTOSAVE_SECONDS + " s; personal fields are encrypted with " + (System.getenv(crowdwatch.db.FieldCipher.KEY_VARIABLE) != null
+        if (db != null) System.out.println("Saved " + crowdwatch.db.SaveSoon.SECONDS + " s after each change and every " + AUTOSAVE_SECONDS + " s; personal fields are encrypted with " + (System.getenv(crowdwatch.db.FieldCipher.KEY_VARIABLE) != null
             ? crowdwatch.db.FieldCipher.KEY_VARIABLE : db.keyFile().getPath() + " - keep a copy of it apart from the backups"));
         java.util.concurrent.ScheduledExecutorService saver = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
-        if (db != null) saver.scheduleAtFixedRate(() -> {
-            try { db.save(m); } catch (Exception e) { System.out.println(m.now() + "  AUTOSAVE FAILED: " + Database.explain(e)); }
-        }, AUTOSAVE_SECONDS, AUTOSAVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+        if (db != null) {
+            Runnable save = () -> {
+                try { db.save(m); } catch (Exception e) { System.out.println(m.now() + "  AUTOSAVE FAILED: " + Database.explain(e)); }
+            };
+            saver.scheduleAtFixedRate(save, AUTOSAVE_SECONDS, AUTOSAVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            // and soon after every change, so a crash loses seconds, not a minute
+            m.addListener(new crowdwatch.db.SaveSoon(saver, save));
+        }
         return new Headless(m, api, port, drill, db, feeds, watchdog, saver);
     }
 
-    /** Seconds between automatic saves (property crowdwatch.autosave, at least 10; default 60). */
+    /** Seconds between regular automatic saves (property crowdwatch.autosave, at least 10; default 60); changes are also saved soon after they happen ({@link crowdwatch.db.SaveSoon}). */
     public static final int AUTOSAVE_SECONDS = Math.max(10, Integer.getInteger("crowdwatch.autosave", 60));
 
     /**

@@ -1878,6 +1878,23 @@ public class TestRunner {
             "SEC-1 camera http://cctv.local/view?camera=sec1, weather line applied, outdoor CURB-1 CURB-2",
             "SEC-1 camera " + cm.venue().cameraOf("SEC-1") + ", weather line " + (wl == null ? "applied" : wl) + ", outdoor " + String.join(" ", cm.outdoorAreas()));
 
+        // 11. saving soon after a change: a burst of changes gives one save, a later change another
+        CrowdMonitor soon = venue("airport");
+        java.util.concurrent.ScheduledExecutorService svEx = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        java.util.concurrent.atomic.AtomicInteger saves = new java.util.concurrent.atomic.AtomicInteger();
+        soon.addListener(new crowdwatch.db.SaveSoon(svEx, saves::incrementAndGet, 300));
+        for (int k = 0; k < 20; k++) soon.adjustOccupancy("SEC-1", 1, Source.SENSOR);
+        soon.awaitListeners(2000);
+        int beforeDelay = saves.get();
+        try { Thread.sleep(700); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        int afterBurst = saves.get();
+        soon.adjustOccupancy("SEC-1", 1, Source.SENSOR);
+        soon.awaitListeners(2000);
+        try { Thread.sleep(700); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        svEx.shutdownNow();
+        check("Saving soon after a change: 20 quick changes are saved once after the delay (not before), a later change is saved again",
+            "before the delay 0, after the burst 1, after the next change 2", "before the delay " + beforeDelay + ", after the burst " + afterBurst + ", after the next change " + saves.get());
+
         if (Database.driverAvailable()) Database.shutdown();
 
         System.out.println("=====================================");
