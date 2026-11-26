@@ -142,7 +142,7 @@ public class App {
 
     /**
      * Sets up a headless server without starting its web server: prints alerts to the console,
-     * saves to the database every 60 seconds, and refuses (exit code 1) if the venue's database
+     * saves to the database about 10 seconds after each change and every 60 seconds, and refuses (exit code 1) if the venue's database
      * cannot be used.
      *
      * @param args {@code --server <venue> [port] [control-key] [scout-key]}

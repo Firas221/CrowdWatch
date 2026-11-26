@@ -40,7 +40,7 @@ jobs:
           mkdir -p "dist/$NAME"
           cp -R program source server web docs examples README.md README.txt LICENSE "dist/$NAME/"
           [ -d screenshots ] && cp -R screenshots "dist/$NAME/" || true
-          rm -rf "dist/$NAME/program/build" "dist/$NAME/program/crowdwatch-data" "dist/$NAME/web/node_modules" "dist/$NAME/server/target" "dist/$NAME/server/src/main/resources/static"
+          rm -rf "dist/$NAME/program/build" "dist/$NAME/program/crowdwatch-data" "dist/$NAME/web/node_modules" "dist/$NAME/server/target" "dist/$NAME/server/src/main/resources/static" "dist/$NAME/docs/source/node_modules"
           (cd dist && zip -qr "$NAME.zip" "$NAME")
           echo "ZIP=dist/$NAME.zip" >> "$GITHUB_ENV"
       - name: Publish the release

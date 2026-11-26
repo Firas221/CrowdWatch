@@ -9,3 +9,4 @@ server/src/main/resources/static/
 server/target/
 program/CrowdWatch-server.jar
 web/*.tsbuildinfo
+docs/source/node_modules/

@@ -12,7 +12,7 @@
     },
     {
       "type": "java",
-      "name": "CrowdWatch server (airport, port 8080)",
+      "name": "CrowdWatch built-in server (airport, port 8080)",
       "request": "launch",
       "mainClass": "crowdwatch.gui.App",
       "cwd": "${workspaceFolder}/program",
