@@ -137,4 +137,60 @@ class SecurityTest {
         assertEquals(200, send("GET", "/api/areas", null, KEY, null).statusCode(), "the control key is never limited");
         Thread.sleep(4500);   // the bucket fills again, so the other tests from this address are not limited
     }
+
+    @Test
+    void everyControlRoomChangeIsASpringEndpoint() {
+        org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping mappings =
+            ctx.getBean("requestMappingHandlerMapping", org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class);
+        java.util.Set<String> served = new java.util.HashSet<>();
+        mappings.getHandlerMethods().forEach((info, method) -> {
+            if (method.getBeanType() == ActionController.class) for (String p : info.getPatternValues()) served.add("POST " + p);
+        });
+        for (String a : crowdwatch.net.ApiServer.ACTIONS) assertTrue(served.contains(a), a + " is not a Spring endpoint");
+        assertEquals(crowdwatch.net.ApiServer.ACTIONS.length, served.size());
+    }
+
+    @Test
+    void changesAreAuditedWithTheUsersOwnName() throws Exception {
+        HttpResponse<String> r = send("POST", "/api/checkin", officer, null, "officer=someone-else");
+        assertEquals(200, r.statusCode(), r.body());
+        assertTrue(r.body().contains("sec-officer"), "a signed-in user always acts in their own name: " + r.body());
+        String audit = send("GET", "/api/audit", officer, null, null).body();
+        assertTrue(audit.contains("\"action\":\"checkin\"") && audit.contains("\"user\":\"sec-officer\""), audit);
+    }
+
+    @Test
+    void badInputAndRules() throws Exception {
+        HttpResponse<String> bad = send("POST", "/api/resolve", operator, null, "id=not-a-number&note=x");
+        assertEquals(400, bad.statusCode(), bad.body());
+        HttpResponse<String> rule = send("POST", "/api/resolve", operator, null, "id=I999999&note=x");
+        assertEquals(422, rule.statusCode(), rule.body());
+        assertTrue(rule.body().startsWith("{\"ok\":false,\"message\":"), rule.body());
+    }
+
+    @Test
+    void plainDashboardFormsAreSentBack() throws Exception {
+        HttpResponse<String> r = send("POST", "/api/occupancy", null, null, "key=" + KEY + "&back=1&area=" + firstArea() + "&delta=1&source=STAFF");
+        assertEquals(303, r.statusCode(), r.body());
+        assertTrue(r.headers().firstValue("Location").orElse("").startsWith("/classic?msg=OK"), r.headers().toString());
+    }
+
+    @Test
+    void aDeviceActsOnlyOnItsOwnTasks() throws Exception {
+        // an incident for some unit, and the device code of a different unit
+        HttpResponse<String> made = send("POST", "/api/sos", null, KEY, "area=" + firstArea() + "&text=device+test");
+        assertEquals(200, made.statusCode(), made.body());
+        String incidents = send("GET", "/api/incidents", null, KEY, null).body();
+        java.util.regex.Matcher mt = java.util.regex.Pattern.compile("\\{\"id\":(\\d+),[^}]*?\"unit\":\"([^\"]+)\"").matcher(incidents);
+        assertTrue(mt.find(), incidents);
+        String id = mt.group(1), owner = mt.group(2);
+        String units = send("GET", "/api/units", null, KEY, null).body();
+        java.util.regex.Matcher um = java.util.regex.Pattern.compile("\"id\":\"([^\"]+)\"").matcher(units);
+        String other = null;
+        while (um.find()) if (!um.group(1).equals(owner)) { other = um.group(1); break; }
+        String code = send("POST", "/api/devices/code", officer, null, "unit=" + other).body().replaceAll(".*\"code\":\"([^\"]+)\".*", "$1");
+        HttpResponse<String> r = send("POST", "/api/onscene", null, code, "id=" + id);
+        assertEquals(403, r.statusCode(), r.body());
+        assertTrue(r.body().contains("can only act on its own tasks"), r.body());
+    }
 }

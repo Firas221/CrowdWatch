@@ -309,32 +309,16 @@ public class ApiServer {
                     case "GET /api/venue" -> { code = 200; body = data.venue(); }
                     case "GET /api/readings" -> { code = 200; body = data.readings(q.search("area")); }
                     case "GET /api/evacuation" -> { code = 200; body = data.evacuation(q.search("zone")); }
-                    case "POST /api/reassign" -> { code = 0; body = null; r = m.reassign(num(q.search("id")), q.search("unit"), q.search("reason")); }
-                    case "POST /api/escalate" -> { code = 0; body = null; r = m.escalate(num(q.search("id"))); }
                     case "GET /health" -> { body = health(); code = body.contains("\"status\":\"fail\"") ? 503 : 200; }
                     case "GET /api/lost" -> { code = 200; body = data.lost(); }
                     case "GET /api/layout" -> { code = 200; body = data.layout(); }
                     case "GET /api/announcements" -> { code = 200; body = data.announcements(); }
                     case "GET /api/handover" -> { code = 200; type = "text/plain; charset=utf-8"; body = m.handoverReport(); }
-                    case "POST /api/found" -> { code = 0; body = null; r = m.found(num(q.search("id")), q.search("area"), by(q)); }
-                    case "POST /api/foundperson" -> { code = 0; body = null; r = m.foundPerson(q.search("area"), q.search("details"), q.search("contact"), by(q)); }
-                    case "POST /api/move" -> { code = 0; body = null; r = m.movePeople(q.search("from"), q.search("to"), num(q.search("count")), source(q)); }
-                    case "POST /api/countcheck/reset" -> { code = 0; body = null; r = m.resetCountCheck(q.search("officer")); }
-                    case "POST /api/alarm" -> { code = 0; body = null; r = m.alarm(q.search("area"), q.search("text")); }
-                    case "POST /api/proposal" -> { code = 0; body = null; r = m.decideProposal("start".equals(q.search("decision")), q.search("officer")); }
-                    case "POST /api/announcement" -> { code = 0; body = null; r = m.decideAnnouncement(num(q.search("id")), "approve".equals(q.search("decision")), q.search("officer")); }
-                    case "POST /api/announce" -> { code = 0; body = null; r = m.announce(q.search("text"), q.search("officer")); }
                     case "GET /api/summary" -> { code = 200; type = "text/plain; charset=utf-8"; body = m.summary(); }
                     case "GET /api/areas" -> { code = 200; body = data.areas(); }
                     case "GET /api/incidents" -> { code = 200; body = data.incidents(); }
                     case "GET /api/alerts" -> { code = 200; body = data.alerts(); }
                     case "GET /api/route" -> { code = 200; body = data.route(q.search("from"), q.search("to"), !"0".equals(q.search("avoid"))); }
-                    case "POST /api/occupancy" -> { code = 0; body = null; r = q.search("delta") != null
-                        ? m.adjustOccupancy(q.search("area"), num(q.search("delta")), source(q))
-                        : m.updateOccupancy(q.search("area"), num(q.search("count")), source(q)); }
-                    case "POST /api/incidents" -> { code = 0; body = null; r = m.reportIncident(q.search("category"), q.search("area"), q.search("details"), q.search("contact"), q.search("language")); }
-                    case "POST /api/resolve" -> { code = 0; body = null; r = m.resolve(num(q.search("id")), q.search("note")); }
-                    case "POST /api/onscene" -> { code = 0; body = null; r = m.confirmOnScene(num(q.search("id"))); }
                     case "GET /scout" -> { code = 200; type = "text/html; charset=utf-8"; body = ScoutPage.page(apiKey != null || (accounts != null && accounts.hasUsers())); }
                     case "GET /api/unit" -> {
                         code = 200;
@@ -342,15 +326,10 @@ public class ApiServer {
                         body = unit(q.search("id"));
                     }
                     case "GET /api/status" -> { code = 200; body = data.status(); }
-                    case "POST /api/ack" -> { code = 0; body = null; r = m.acknowledge(q.search("unit")); }
-                    case "POST /api/sos" -> { code = 0; body = null; r = m.sos(q.search("area"), q.search("unit"), q.search("text")); }
-                    case "POST /api/checkin" -> { code = 0; body = null; r = m.officerCheckIn(q.search("officer")); }
-                    case "POST /api/review" -> { code = 0; body = null; r = m.review(num(q.search("id")), q.search("officer"), !"false".equals(q.search("decision")), q.search("note")); }
-                    case "POST /api/evacuate" -> { code = 0; body = null; r = m.evacuate(q.search("zone"), q.search("officer")); }
-                    case "POST /api/evacuate/end" -> { code = 0; body = null; r = m.endEvacuation(q.search("officer")); }
-                    case "POST /api/broadcast" -> { code = 0; body = null; r = m.broadcast(q.search("text"), q.search("officer")); }
-                    case "POST /api/automation" -> { code = 0; body = null; r = automation(q); }
-                    default -> { code = 404; body = err("unknown endpoint " + method + " " + path); }
+                    default -> {
+                        r = method.equals("POST") ? change(endpoint, q) : null;
+                        if (r != null) { code = 0; body = null; } else { code = 404; body = err("unknown endpoint " + method + " " + path); }
+                    }
                 }
             } } finally { turns.release(); }
             if (r != null && q.search("back") != null) {
@@ -480,6 +459,44 @@ public class ApiServer {
     static int num(String s) {
         if (s == null) throw new IllegalArgumentException("missing number");
         return Integer.parseInt(s.trim().replaceAll("^[A-Za-z]", ""));
+    }
+
+    /** The control-room changes: what the Spring Boot server serves as {@code ActionController} endpoints. */
+    public static final String[] ACTIONS = { "POST /api/reassign", "POST /api/escalate", "POST /api/found", "POST /api/foundperson", "POST /api/move", "POST /api/countcheck/reset", "POST /api/alarm", "POST /api/proposal", "POST /api/announcement", "POST /api/announce", "POST /api/occupancy", "POST /api/incidents", "POST /api/resolve", "POST /api/onscene", "POST /api/ack", "POST /api/sos", "POST /api/checkin", "POST /api/review", "POST /api/evacuate", "POST /api/evacuate/end", "POST /api/broadcast", "POST /api/automation" };
+
+    /**
+     * Carries out one control-room change. Call it holding the monitor's lock, after the rights
+     * were checked ({@link #permit}).
+     *
+     * @return the monitor's result, or null if the endpoint is not one of {@link #ACTIONS}
+     * @throws IllegalArgumentException for bad input, such as a number that is not a number (reply 400)
+     */
+    private Result change(String endpoint, AVLTree<String, String> q) {
+        return switch (endpoint) {
+            case "POST /api/reassign" -> m.reassign(num(q.search("id")), q.search("unit"), q.search("reason"));
+            case "POST /api/escalate" -> m.escalate(num(q.search("id")));
+            case "POST /api/found" -> m.found(num(q.search("id")), q.search("area"), by(q));
+            case "POST /api/foundperson" -> m.foundPerson(q.search("area"), q.search("details"), q.search("contact"), by(q));
+            case "POST /api/move" -> m.movePeople(q.search("from"), q.search("to"), num(q.search("count")), source(q));
+            case "POST /api/countcheck/reset" -> m.resetCountCheck(q.search("officer"));
+            case "POST /api/alarm" -> m.alarm(q.search("area"), q.search("text"));
+            case "POST /api/proposal" -> m.decideProposal("start".equals(q.search("decision")), q.search("officer"));
+            case "POST /api/announcement" -> m.decideAnnouncement(num(q.search("id")), "approve".equals(q.search("decision")), q.search("officer"));
+            case "POST /api/announce" -> m.announce(q.search("text"), q.search("officer"));
+            case "POST /api/occupancy" -> q.search("delta") != null ? m.adjustOccupancy(q.search("area"), num(q.search("delta")), source(q)) : m.updateOccupancy(q.search("area"), num(q.search("count")), source(q));
+            case "POST /api/incidents" -> m.reportIncident(q.search("category"), q.search("area"), q.search("details"), q.search("contact"), q.search("language"));
+            case "POST /api/resolve" -> m.resolve(num(q.search("id")), q.search("note"));
+            case "POST /api/onscene" -> m.confirmOnScene(num(q.search("id")));
+            case "POST /api/ack" -> m.acknowledge(q.search("unit"));
+            case "POST /api/sos" -> m.sos(q.search("area"), q.search("unit"), q.search("text"));
+            case "POST /api/checkin" -> m.officerCheckIn(q.search("officer"));
+            case "POST /api/review" -> m.review(num(q.search("id")), q.search("officer"), !"false".equals(q.search("decision")), q.search("note"));
+            case "POST /api/evacuate" -> m.evacuate(q.search("zone"), q.search("officer"));
+            case "POST /api/evacuate/end" -> m.endEvacuation(q.search("officer"));
+            case "POST /api/broadcast" -> m.broadcast(q.search("text"), q.search("officer"));
+            case "POST /api/automation" -> automation(q);
+            default -> null;
+        };
     }
 
     /** Switches on personal logins, device codes and the audit log (null switches them off). */
@@ -617,12 +634,59 @@ public class ApiServer {
      * @return the caller, or null if not signed in
      */
     public Caller caller(Exchange ex, String given) {
+        Accounts.Who w = who(ex, given);
+        if (w == null) return null;
+        return new Caller(w.name, w.role != null ? w.role.name() : w.unit != null ? "DEVICE" : "SCOUT", w.unit, w == SYSTEM);
+    }
+
+    // the caller as the API sees it: SYSTEM for the control key or an open server, else a user, device or the scout key
+    private Accounts.Who who(Exchange ex, String given) {
         Accounts acc = accounts;
         boolean open = apiKey == null && (acc == null || !acc.hasUsers());
         boolean control = open || (apiKey != null && apiKey.equals(given));
-        Accounts.Who w = control ? SYSTEM : identify(acc, ex, given);
-        if (w == null) return null;
-        return new Caller(w.name, w.role != null ? w.role.name() : w.unit != null ? "DEVICE" : "SCOUT", w.unit, w == SYSTEM);
+        return control ? SYSTEM : identify(acc, ex, given);
+    }
+
+    /** The reply to a control-room change: HTTP status and JSON body ({"ok":..,"message":..}). */
+    public record Outcome(int code, boolean ok, String message) {
+        /** @return the JSON body */
+        public String json() { return "{\"ok\":" + ok + ",\"message\":" + str(message) + "}"; }
+    }
+
+    /**
+     * A control-room change for the Spring Boot server's controllers, handled as this server
+     * handles it: the caller's rights (for a device code: only its own unit's tasks; for a
+     * signed-in user the officer name is always their own), the monitor's lock with fair turns,
+     * the cache cleared, and the audit log written.
+     *
+     * @param ex       the request, for working out the caller (its body is not read)
+     * @param given    the key from the X-Api-Key header or the {@code key} field, or null
+     * @param endpoint one of {@link #ACTIONS}
+     * @param params   the query and form fields
+     * @return 200 done, 422 refused by a rule, 400 bad input, 401 not signed in, 403 not allowed, 404 not a change
+     */
+    public Outcome act(Exchange ex, String given, String endpoint, java.util.Map<String, String> params) {
+        extras.requests.incrementAndGet();
+        AVLTree<String, String> q = new AVLTree<>();
+        params.forEach((k, v) -> { if (k != null && v != null) q.insert(k, v); });
+        Accounts.Who who = who(ex, given);
+        if (who == null) return new Outcome(401, false, signInMessage());
+        try {
+            String refused = permit(who, endpoint, q);
+            if (refused != null) {
+                audit(who, endpoint, q, false, refused);
+                return new Outcome(403, false, refused);
+            }
+            cache.clear();
+            Result r;
+            turns.acquireUninterruptibly();
+            try { synchronized (m) { r = change(endpoint, q); } } finally { turns.release(); }
+            if (r == null) return new Outcome(404, false, "unknown endpoint " + endpoint);
+            audit(who, endpoint, q, r.ok, r.message);
+            return new Outcome(r.ok ? 200 : 422, r.ok, r.message);
+        } catch (RuntimeException e) {
+            return new Outcome(400, false, String.valueOf(e.getMessage()));
+        }
     }
 
     /** @return true if an address without the control key has sent too many requests this second (counts this one) */

@@ -15,13 +15,15 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Hands the rest of the CrowdWatch API to {@link ApiServer#dispatch}: the changes (which write
- * the audit log and check that a device code acts only for its own unit), sign-in, scout phones,
- * reports, photos and the pages. Spring Security has already identified the caller and checked
- * the role ({@link SecurityConfig}); what the consoles read is served by {@link ConsoleController}.
+ * Hands the remaining endpoints to {@link ApiServer#dispatch}: sign-in and sign-out, users,
+ * device codes and two-step sign-in, messages and photos, the scout phones' position and duty,
+ * weather, reports and replay, data-protection requests, the venue file, metrics and the pages
+ * (classic console, plain dashboard, scout page, visitor help page). Spring Security has already
+ * identified the caller and checked the role ({@link SecurityConfig}). What the consoles read is
+ * served by {@link ConsoleController}, the control-room changes by {@link ActionController}.
  * <p>
- * The React console is served from {@code static/} ({@code /} and {@code /assets/...}); the
- * classic console stays available at {@code /legacy}.
+ * The React console itself is served from {@code static/}; the classic console stays at
+ * {@code /legacy}.
  */
 @RestController
 public class ApiBridge {
