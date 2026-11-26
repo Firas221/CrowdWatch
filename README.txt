@@ -1,11 +1,10 @@
-CrowdWatch 2.0 - general crowd monitoring and response (Java 17 or later)
+CrowdWatch 2.4 - general crowd monitoring and response (Java 17 or later)
 
-Desktop:   program/run.bat (or ./run.sh) -> choose Airport, Stadium, Umrah, or open a .venue file (Swing window)
-Modern UI: program/run-fx.bat (or ./run-fx.sh) -> JavaFX console: everything in the Swing window plus the venue map, lost persons,
-           evacuation proposals, public messages and the count check; dark control-room theme (Light button for light)
-           (JavaFX 21 for Windows, Linux x64 and macOS is in program/lib/javafx)
+Desktop:   program/run.bat (or ./run.sh) -> choose Airport, Stadium, Umrah, or open a .venue file (JavaFX console:
+           venue map, lost persons, evacuation proposals, public messages and the count check; dark control-room theme,
+           Light button for light; JavaFX 21 for Windows, Linux x64 and macOS is in program/lib/javafx)
 Users:     program/add-user.bat <name> <OPERATOR|OFFICER|ADMIN> (or ./add-user.sh) -> personal logins with roles, also asked
-           by the desktop windows; two-step sign-in with an authenticator app is set up in Venue settings of the web console;
+           by the desktop console; two-step sign-in with an authenticator app is set up in Venue settings of the web console;
            the first user should be an ADMIN. Passwords are stored as PBKDF2 hashes in crowdwatch-data/accounts.txt.
            Every change is written to the audit log (database table AUDIT and crowdwatch-data/audit/<venue>/).
 Server:    program/run-server.bat        -> control room browsers open http://<this-pc>:8080/ (web console: sign in with
@@ -35,8 +34,7 @@ Layout:    a venue file may include a drawing (map:, pos:), exit flows, corridor
            All sample venues have one; the Umrah layout is a schematic of the real mosques (estimates, not official figures).
 Lost:      lost-person reports send a lookout to every unit, widen the search, escalate at 15 and 30 min;
            scouts press Found; found persons are brought to the meeting point (meeting: line).
-Officer:   check in every 15 min (Operations tab, JavaFX console or web console); review automatic dispatches; SOS and evacuation there too.
-           The Swing Operations tab also has lost persons, the evacuation proposal, alarms, public messages, counting and handover.
+Officer:   check in every 15 min (desktop console or web console); review automatic dispatches; SOS and evacuation there too.
 Sensors:   feed: lines in the venue file: folder (count files), poll (a web address, text or JSON), tcp (devices on a socket);
            or implement crowdwatch.feed.CrowdFeed, or POST to /api/occupancy (a count or a +/- change);
            door counters between zones POST /api/move (from, to, count) so a person is never in two zones;

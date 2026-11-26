@@ -38,13 +38,13 @@ import crowdwatch.model.Alert;
 import crowdwatch.model.Enums.Priority;
 
 /**
- * The JavaFX console: the same CrowdWatch features as the Swing window, in a Fluent-style layout
+ * The JavaFX console: the CrowdWatch desktop interface, in a Fluent-style layout
  * like a cloud portal: a dark top bar, a menu on the left, status chips, cards, a colour-coded
  * venue map, live charts and a details panel that slides in for an incident. Light and dark themes
  * come from {@code crowdwatch.css}.
  * <p>
  * It uses the same {@link CrowdMonitor}, database, autosave, watchdog, radio gateway and network
- * server as the Swing window; only the screens are different. Every read of the monitor's data
+ * server as headless server mode. Every read of the monitor's data
  * happens under the monitor's lock, and the monitor's change notices (which arrive on its event
  * thread) are passed to the JavaFX thread with {@link Platform#runLater}, merged into one refresh.
  */

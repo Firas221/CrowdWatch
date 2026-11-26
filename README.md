@@ -10,8 +10,7 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 
 | What | How |
 |---|---|
-| Desktop window (Swing) | `program/run.bat` or `program/run.sh`, then choose Airport, Stadium, Umrah or a `.venue` file |
-| JavaFX console | `program/run-fx.bat` or `program/run-fx.sh` |
+| Desktop console (JavaFX) | `program/run.bat` or `program/run.sh`, then choose Airport, Stadium, Umrah or a `.venue` file |
 | Users | `program/add-user.bat <name> <ROLE>` or `./add-user.sh` (roles OPERATOR, OFFICER, ADMIN; the first should be ADMIN) |
 | Server and web console | `program/run-server.bat` or `program/run-server.sh`, then open `http://<this-pc>:8080/` and sign in |
 | HTTPS | add `--https`, or set `CROWDWATCH_HTTPS=1` before `run-server` |
@@ -24,8 +23,8 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 ## What is in it
 
 - Hand-written data structures: AVL trees, queues, linked lists, circular buffers, a min-heap, a graph with Dijkstra, merge sort.
-- Three consoles (Swing, JavaFX, web), a scout phone page and a JSON API.
-- Security: personal logins with three roles in the web console, the plain dashboard and both desktop windows; optional two-step sign-in with an authenticator app; PBKDF2 password hashes, lock after wrong passwords, sign-ins kept over a restart; a device code per scout phone that works only for its unit; officer approval for restricted areas; an audit log of every change (database and daily file); built-in HTTPS; control and scout keys for other systems.
+- Two consoles (JavaFX desktop and web), a scout phone page and a JSON API.
+- Security: personal logins with three roles in the web console, the plain dashboard and the desktop console; optional two-step sign-in with an authenticator app; PBKDF2 password hashes, lock after wrong passwords, sign-ins kept over a restart; a device code per scout phone that works only for its unit; officer approval for restricted areas; an audit log of every change (database and daily file); built-in HTTPS; control and scout keys for other systems.
 - Personal data: incident details and contacts encrypted in the database (AES-256-GCM), erased from archived incidents after 30 days; daily backups optionally copied to a second folder.
 - Sensors: `feed:` lines connect counting systems by folder, web address (text or JSON) or TCP socket, besides the JSON API.
 - Crowd density: with an area's floor area the level also follows people per square metre (dangerous from 4 per m²).

@@ -1,16 +1,15 @@
 package crowdwatch.gui;
 
 import java.nio.file.Path;
-import javax.swing.*;
 import crowdwatch.core.*;
 import crowdwatch.db.Database;
 
 /**
  * Program entry point.
  * <p>
- * Without arguments it asks which venue to open and starts the desktop window. With
+ * Without arguments (or with a venue code or .venue file) it starts the JavaFX desktop console
+ * when JavaFX is on the class path; otherwise it says how to start it. With
  * {@code --server <venue> [port] [api-key]} it runs without a window as a network server.
- * A first argument that is a venue code or .venue file opens that venue directly.
  */
 public class App {
     /**
@@ -48,20 +47,10 @@ public class App {
     }
 
     /**
-     * Asks the user what to do when a venue's database cannot be used.
-     *
-     * @return true to continue in memory with sample data (nothing saved), false to give up
-     */
-    static boolean askMemoryOnly(java.awt.Component parent, String reason) {
-        return JOptionPane.showConfirmDialog(parent, reason + "\n\nContinue WITHOUT the database? The window will show sample data,\nnot the real situation, and nothing will be saved.",
-            "CrowdWatch - database not available", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION;
-    }
-
-    /**
      * Starts CrowdWatch.
      *
-     * @param args none for the venue chooser; a venue code or file to open it directly;
-     *             or --server &lt;venue&gt; [port] [api-key] for headless mode
+     * @param args none for the venue chooser of the JavaFX console; a venue code or file to open it
+     *             directly; or --server &lt;venue&gt; [port] [api-key] for headless mode
      */
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && args[0].equals("--user")) { user(args); return; }
@@ -81,30 +70,16 @@ public class App {
             } else headless(rest, https, false, null);
             return;
         }
-        SwingUtilities.invokeLater(() -> {
-            try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) { }
-            VenueProfile p;
-            try {
-                p = args.length > 0 ? pick(args[0]) : choose();
-            } catch (Exception e) {
-                JOptionPane.showMessageDialog(null, "Venue not loaded: " + e.getMessage(), "CrowdWatch", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-            if (p == null) return;
-            CrowdMonitor m = new CrowdMonitor(Clock.SYSTEM);
-            Database db = openDatabase(p.code);
-            String note;
-            try {
-                note = loadOrSeed(m, db, p);
-            } catch (IllegalStateException e) {
-                if (!askMemoryOnly(null, e.getMessage())) { System.exit(1); return; }
-                db = null;
-                note = loadOrSeed(m, null, p);
-            }
-            MainWindow w = new MainWindow(m, db);
-            w.setVisible(true);
-            JOptionPane.showMessageDialog(w, note, "CrowdWatch", JOptionPane.INFORMATION_MESSAGE);
-        });
+        // the desktop console is the JavaFX one (run.bat / run.sh put JavaFX on the path)
+        try {
+            Class.forName("javafx.application.Application");
+        } catch (ClassNotFoundException e) {
+            System.out.println("The desktop console needs JavaFX: start it with program/run.bat (Windows) or ./run.sh (macOS, Linux).");
+            System.out.println("Server without a window: java -jar CrowdWatch.jar --server <airport|stadium|umrah|file.venue> [port] [control-key] [scout-key] [--https]");
+            System.out.println("Users: java -jar CrowdWatch.jar --user <name> <OPERATOR|OFFICER|ADMIN>   Sites: --site list   Drill: --drill <venue> [port] [file.drill]");
+            return;
+        }
+        Class.forName("crowdwatch.fx.FxLauncher").getMethod("main", String[].class).invoke(null, (Object) args);
     }
 
     /**
@@ -293,20 +268,5 @@ public class App {
     public static VenueProfile pick(String arg) throws Exception {
         for (String code : VenueProfile.BUILT_IN) if (code.equalsIgnoreCase(arg)) return VenueProfile.builtIn(code);
         return VenueProfile.fromFile(Path.of(arg));
-    }
-
-    /**
-     * Shows the venue chooser dialog.
-     *
-     * @return the chosen venue, or null if the user cancelled
-     */
-    private static VenueProfile choose() throws Exception {
-        String[] options = { "Airport", "Stadium", "Umrah (Holy Mosques)", "Open venue file..." };
-        int c = JOptionPane.showOptionDialog(null, "Choose the venue to monitor.\nEach venue keeps its own database.", "CrowdWatch",
-            JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
-        if (c < 0) return null;
-        if (c < 3) return VenueProfile.builtIn(VenueProfile.BUILT_IN[c]);
-        JFileChooser fc = new JFileChooser(new java.io.File("."));
-        return fc.showOpenDialog(null) == JFileChooser.APPROVE_OPTION ? VenueProfile.fromFile(fc.getSelectedFile().toPath()) : null;
     }
 }

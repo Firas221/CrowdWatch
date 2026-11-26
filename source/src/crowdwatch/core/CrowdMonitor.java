@@ -9,7 +9,7 @@ import crowdwatch.model.Enums.*;
 /**
  * The heart of CrowdWatch: holds the venue's data and applies every rule.
  * <p>
- * All input paths (the Swing GUI, the web API, sensor feeds, the database loader) call the
+ * All input paths (the JavaFX console, the web API, sensor feeds, the database loader) call the
  * public methods of this class, and all output goes through alerts and
  * {@link MonitorListener}s. The class knows nothing about airports or mosques; everything
  * venue-specific comes from a {@link VenueProfile}.

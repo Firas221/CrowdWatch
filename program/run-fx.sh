@@ -1,5 +1,5 @@
 #!/bin/sh
-# Starts the JavaFX console (the modern interface). Usage: ./run-fx.sh [venue code or .venue file]
+# Starts the JavaFX desktop console (same as run). Usage: ./run-fx.sh [venue code or .venue file]
 cd "$(dirname "$0")"
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) FX=lib/javafx/mac-aarch64 ;;
