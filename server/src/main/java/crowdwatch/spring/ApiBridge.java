@@ -52,6 +52,7 @@ public class ApiBridge {
     private void forward(HttpServletRequest rq, HttpServletResponse rs, String path) throws IOException {
         ApiServer.Exchange ex = new ApiServer.Exchange(rq.getMethod(), path, rq.getQueryString(),
             name -> Collections.list(rq.getHeaders(name)), rq.getInputStream(), rq.getRemoteAddr(), rq.isSecure());
+        if (rq.getAttribute(SecurityConfig.LIMITED) != null) ex.rateLimitChecked();
         api.dispatch(ex);
         rs.setStatus(ex.code);
         for (String[] h : ex.replyHeaders) {

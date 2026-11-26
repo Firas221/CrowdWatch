@@ -236,7 +236,7 @@ public class ApiServer {
             Accounts acc = accounts;
             boolean open = apiKey == null && (acc == null || !acc.hasUsers());
             boolean control = open || (apiKey != null && apiKey.equals(given));
-            if (!control && limiter.tooMany(ex.remote)) { send(ex, 429, type, err("too many requests, slow down")); return; }
+            if (!control && !ex.limitChecked && limiter.tooMany(ex.remote)) { send(ex, 429, type, err("too many requests, slow down")); return; }
             Accounts.Who who = control ? SYSTEM : identify(acc, ex, given);
             extras.requests.incrementAndGet();
             if (endpoint.equals("GET /metrics")) {
@@ -906,14 +906,78 @@ public class ApiServer {
             return null;
         }
         if (who != SYSTEM) q.insert("officer", who.name);
-        Accounts.Role need;
-        if (in(endpoint, ADMIN_ONLY)) need = Accounts.Role.ADMIN;
-        else if (in(endpoint, OFFICER_GETS)) need = Accounts.Role.OFFICER;
-        else if (endpoint.startsWith("GET ")) need = Accounts.Role.OPERATOR;
-        else if (in(endpoint, OPERATOR_POSTS)) need = Accounts.Role.OPERATOR;
-        else need = Accounts.Role.OFFICER;
-        return who.atLeast(need) ? null : "your role " + who.role + " cannot use " + endpoint + " (needs " + need + ")";
+        return refusal(who.role.name(), endpoint);
     }
+
+    /** @return the least role a personal user needs for an endpoint (each role has the rights of the roles below it) */
+    static Accounts.Role requiredRole(String endpoint) {
+        if (in(endpoint, ADMIN_ONLY)) return Accounts.Role.ADMIN;
+        if (in(endpoint, OFFICER_GETS)) return Accounts.Role.OFFICER;
+        if (endpoint.startsWith("GET ")) return Accounts.Role.OPERATOR;
+        if (in(endpoint, OPERATOR_POSTS)) return Accounts.Role.OPERATOR;
+        return Accounts.Role.OFFICER;
+    }
+
+    /**
+     * The role rules of every endpoint, in one place for this server and the Spring Boot server
+     * (whose Spring Security checks them before a request reaches the API). A device code may
+     * also act only for its own unit; that is checked when the request is handled.
+     *
+     * @param role     OPERATOR, OFFICER or ADMIN; DEVICE or SCOUT for a scout phone
+     * @param endpoint method and path, e.g. "POST /api/evacuate"
+     * @return null if allowed, otherwise the reason (HTTP 403)
+     */
+    public static String refusal(String role, String endpoint) {
+        if (in(endpoint, PUBLIC)) return null;
+        if ("DEVICE".equals(role) || "SCOUT".equals(role)) return in(endpoint, SCOUT) ? null : "a scout device cannot use " + endpoint;
+        Accounts.Role have;
+        try { have = Accounts.Role.valueOf(role); } catch (IllegalArgumentException | NullPointerException e) { return "unknown role " + role; }
+        Accounts.Role need = requiredRole(endpoint);
+        return have.ordinal() >= need.ordinal() ? null : "your role " + have + " cannot use " + endpoint + " (needs " + need + ")";
+    }
+
+    /** @return true for pages and endpoints anyone may use without signing in (they hold no venue data) */
+    public static boolean isPublic(String endpoint) { return in(endpoint, PUBLIC); }
+
+    /** Who is calling, as seen by both web servers. */
+    public record Caller(String name, String role, String unit, boolean system) { }
+
+    /**
+     * Works out who is calling: the control key (or an open server), a signed-in user (bearer
+     * token or the plain dashboard's cookie), a scout device code or the scout key.
+     *
+     * @param ex    the request (its body is not read)
+     * @param given the key from the X-Api-Key header or the {@code key} field, or null
+     * @return the caller, or null if not signed in
+     */
+    public Caller caller(Exchange ex, String given) {
+        Accounts acc = accounts;
+        boolean open = apiKey == null && (acc == null || !acc.hasUsers());
+        boolean control = open || (apiKey != null && apiKey.equals(given));
+        Accounts.Who w = control ? SYSTEM : identify(acc, ex, given);
+        if (w == null) return null;
+        return new Caller(w.name, w.role != null ? w.role.name() : w.unit != null ? "DEVICE" : "SCOUT", w.unit, w == SYSTEM);
+    }
+
+    /** @return true if an address without the control key has sent too many requests this second (counts this one) */
+    public boolean tooMany(String remote) { return limiter.tooMany(remote); }
+
+    /** @return the message for a request that needs a sign-in */
+    public String signInMessage() { Accounts acc = accounts; return acc != null && acc.hasUsers() ? "please sign in" : "missing or wrong API key"; }
+
+    /**
+     * Records a refused change in the audit log, for refusals made before a request reaches the
+     * API (by Spring Security).
+     *
+     * @param params the query and form parameters, URL-encoded
+     */
+    public void auditRefused(Caller c, String endpoint, String params, String reason) {
+        Accounts.Who who = c == null ? null : new Accounts.Who(c.name(), c.role() == null || c.role().equals("DEVICE") || c.role().equals("SCOUT") ? null : Accounts.Role.valueOf(c.role()), c.unit());
+        audit(who, endpoint, params(params), false, reason);
+    }
+
+    /** JSON error body, as every endpoint gives it. */
+    public static String errorJson(String message) { return err(message); }
 
     // parameters that are never written to the audit log
     private static final String[] SECRET = { "password", "key", "token", "back" };
@@ -1104,6 +1168,11 @@ public class ApiServer {
         public final java.util.List<String[]> replyHeaders = new java.util.ArrayList<>();
         /** Reply body (empty for none). */
         public byte[] replyBody = new byte[0];
+        // true when the web server in front already applied the rate limit to this request
+        boolean limitChecked;
+
+        /** Tells the API that the rate limit was already applied to this request (so it is counted once). */
+        public void rateLimitChecked() { limitChecked = true; }
 
         /**
          * @param method   GET or POST
