@@ -1,4 +1,4 @@
-Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=46359 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=34685 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
 Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock
 CROWDWATCH - TEST EVIDENCE AND TRACES
 =====================================
@@ -261,7 +261,7 @@ TC-38  Derby save then load restores venue, units, incidents, queues and history
   Result:   PASS
 
   Trace - save of a busy day:
-    alerts kept 1000, save took 999 ms, longest sensor wait during the save 28 ms
+    alerts kept 1000, save took 883 ms, longest sensor wait during the save 33 ms
 TC-39  Saving a busy day does not stop the sensors (monitor locked only to copy the data)
   Expected: alerts kept 1000, longest sensor wait under 300 ms
   Actual:   alerts kept 1000, longest sensor wait under 300 ms
@@ -500,7 +500,7 @@ TC-75  The web console page and its files are served without a key; the old dash
   Result:   PASS
 
   Trace - GET /api/overview:
-    {"venue":"Sample International Airport","code":"airport","now":"09:00","people":4235,"capacity":15220,"areas":16,"levels":{"LOW":14,"MODERATE":1,"HIGH":1,"CRITICAL":0},"incidents":{"open":1,"CRITICAL":0,"HIGH":0,"NORMAL":1,"LOW":0,"waiting":0,"unacknowledged":1},"units":{"total":8,"AVAILABLE":7,"BUSY":1,"OFF_DUTY":0,"UNREACHABLE":0,"online":0},"review":0,"automation":false,"autoRule":"CROWD at HIGH or TREND","officer":"Officer Test","officerStatus":"Officer Test, checked in 0 min ago","overdue":false,"evacuation":null,"archived":0,"proposal":null,"signs":0,"stale":0,"lost":0,"events":[],"countCheck":null}
+    {"venue":"Sample International Airport","code":"airport","now":"09:00","people":4235,"capacity":15220,"areas":16,"levels":{"LOW":14,"MODERATE":1,"HIGH":1,"CRITICAL":0},"incidents":{"open":1,"CRITICAL":0,"HIGH":0,"NORMAL":1,"LOW":0,"waiting":0,"unacknowledged":1},"units":{"total":8,"AVAILABLE":7,"BUSY":1,"OFF_DUTY":0,"UNREACHABLE":0,"online":0},"review":0,"automation":false,"autoRule":"CROWD at HIGH or TREND","officer":"Officer Test","officerStatus":"Officer Test, checked in 0 min ago","overdue":false,"evacuation":null,"archived":0,"proposal":null,"signs":0,"stale":0,"lost":0,"events":[],"countCheck":null,"drill":false,"heat":null,"sites":false}
 TC-76  GET /api/overview, /api/units and /api/venue give the console everything in three replies; the data still needs the key
   Expected: no key 401; overview people, levels, incidents, units, officer; units with task and device; venue thresholds, categories, sectors
   Actual:   no key 401; overview people, levels, incidents, units, officer; units with task and device; venue thresholds, categories, sectors
@@ -663,7 +663,7 @@ TC-103  Umrah layout: walking times come from the drawing (1 unit = 1 m, 60 m a 
   Result:   PASS
 
   Trace - hall plan:
-    [[Ljava.lang.String;@2420e962 -> [Ljava.lang.String;@1fc51af7 -> [Ljava.lang.String;@66df2165 -> [Ljava.lang.String;@41cec7b0 -> [Ljava.lang.String;@62065d12]
+    [[Ljava.lang.String;@60ddad4 -> [Ljava.lang.String;@76d9fe26 -> [Ljava.lang.String;@4a0e3bd -> [Ljava.lang.String;@6a6a60f3 -> [Ljava.lang.String;@2d9cc10]
 TC-104  Evacuation with exit flows: 6,000 people split over both exits (all through the near door would take 7 min); the lift is never used (the upper floor walks 4 min down the stairs and queues behind 3,000 at the near door: clear in 8 min); fire zone by name
   Expected: 3000 to NEAR, 3000 to FAR, zone clear in 8 min, upper floor via [UPPER -> HALL -> NEAR]
   Actual:   3000 to NEAR, 3000 to FAR, zone clear in 8 min, upper floor via [UPPER -> HALL -> NEAR]
@@ -793,5 +793,82 @@ TC-126  Venue lines: feed: and retention: are read, an unknown feed is refused; 
   Actual:   2 feeds, retention 7, unknown feed refused, MATAF 8 points, box 397 367 206 206, layout has the shape
   Result:   PASS
 
+PART O - DENSITY, REPORTS, REPLAY, MESSAGES, HEAT, ALERTS TO PHONES, DRILLS, SITES, PRIVACY, HELP PAGE, QR
+
+TC-127  Density: with a floor area the level also follows people per m2 (MODERATE 2, HIGH 4, CRITICAL 5), even when the capacity percentage is low; it eases off with a 5% margin
+  Expected: 150:LOW 450:HIGH 390:HIGH 370:MODERATE 520:CRITICAL 490:CRITICAL  - YARD without a size at 45%: LOW
+  Actual:   150:LOW 450:HIGH 390:HIGH 370:MODERATE 520:CRITICAL 490:CRITICAL  - YARD without a size at 45%: LOW
+  Result:   PASS
+
+TC-128  Reports: one frame a minute; the busiest area with its peak and hour, minutes to acknowledge and to arrive; CSV for Excel and a printable page
+  Expected: frames 5, GATE-A peak 1400 (88%) at 09:03, ack median 2.0, on scene median 5.0, CSV has 5 sections, printable page
+  Actual:   frames 5, GATE-A peak 1400 (88%) at 09:03, ack median 2.0, on scene median 5.0, CSV has 5 sections, printable page
+  Result:   PASS
+
+TC-129  Server: replay of the recorded minutes with their levels; reports for officers (JSON, CSV download); operators cannot read reports
+  Expected: replay 200 with SEC-1 at 380 HIGH, report 200, CSV attachment, operator 403
+  Actual:   replay 200 with SEC-1 at 380 HIGH, report 200, CSV attachment, operator 403
+  Result:   PASS
+
+TC-130  Messages: a scout phone sends text and a photo to the control room (stored as its own unit, whatever unit it names); the control room answers; another unit's phone cannot see the photo
+  Expected: 200, listed from A03 with photo, photo 200 image/png, other phone 403, reply 200, A03 got FROM CONTROL (Operator omar)
+  Actual:   200, listed from A03 with photo, photo 200 image/png, other phone 403, reply 200, A03 got FROM CONTROL (Operator omar)
+  Result:   PASS
+
+TC-131  Scout phone extras: 'I am here' moves the unit (not into staff-only areas); going off duty with a task is refused; a low battery raises one alert
+  Expected: 200 at GATE-C, staff-only 422, off duty with a task 422, battery 12% and 1 alert
+  Actual:   200 at GATE-C, staff-only 422, off duty with a task 422, battery 12% and 1 alert
+  Result:   PASS
+
+TC-132  Heat stress: the heat index from temperature and humidity (US NWS formula), its band, an alert naming the outdoor areas and what to do
+  Expected: 38C 50% -> heat index 49 (DANGER), alert names CURB-1, CURB-2 and water and shade, overview shows it
+  Actual:   38C 50% -> heat index 49 (DANGER), alert names CURB-1, CURB-2 and water and shade, overview shows it
+  Result:   PASS
+
+TC-133  Monitoring and the venue editor: /metrics in Prometheus format only with the control key; the venue file for administrators; an edited file is checked before it is saved
+  Expected: metrics 401 without key, 200 with people on site, venue file 200 (operator 403), saved 200 (1 file), a wrong file 422
+  Actual:   metrics 401 without key, 200 with people on site, venue file 200 (operator 403), saved 200 (1 file), a wrong file 422
+  Result:   PASS
+
+TC-134  Visitor help page: public, GATE-B already chosen from the QR code; reports become incidents marked as visitor reports; 3 reports per phone in 10 minutes; QR codes to print
+  Expected: help 200 with GATE-B selected, 3 accepted (LOST_PERSON), 4th 429, 3 incidents more, QR page with codes
+  Actual:   help 200 with GATE-B selected, 3 accepted (LOST_PERSON), 4th 429, 3 incidents more, QR page with codes
+  Result:   PASS
+
+TC-135  Data-protection request: an administrator finds a person's data by phone number, exports it, and erases it; the rest of the record stays
+  Expected: found I1002, operator 403, erased 200, search again finds nothing, category kept LOST_PERSON
+  Actual:   found I1002, operator 403, erased 200, search again finds nothing, category kept LOST_PERSON
+  Result:   PASS
+
+TC-136  Alerts nobody dealt with go to the duty officer's phone (SMS, WhatsApp or e-mail gateway) after the set minutes; an alert dealt with at a console is not sent
+  Expected: after 1 min: 0, after 4 min: 1 sent with kind SOS, alarm dealt with by a check-in: 0 sent
+  Actual:   after 1 min: 0, after 4 min: 1 sent with kind SOS, alarm dealt with by a check-in: 0 sent
+  Result:   PASS
+
+TC-137  Drills: a timed script of events played into a training server (nothing saved); every screen shows DRILL; an unknown command is refused
+  Expected: 12 events, count applied, lost person recorded, alarm raised, overview drill true, bad line refused
+  Actual:   12 events, count applied, lost person recorded, alarm raised, overview drill true, bad line refused
+  Result:   PASS
+
+TC-138  Several venues: a head office lists its sites (sites.txt) and sees each one's situation; a site that does not answer is shown as such
+  Expected: Stadium answers (Sample National Stadium), Mall not answering, overview says sites true
+  Actual:   Stadium answers (Sample National Stadium), Mall not answering, overview says sites true
+  Result:   PASS
+
+TC-139  Company directory and passwords: a directory user is checked by LDAP (refused when no directory answers); a reset code works once within 30 minutes; changing a password needs the current one
+  Expected: directory user saved, refused without a directory, wrong code refused, reset done, code used up, new password works, wrong current password refused
+  Actual:   directory user saved, refused without a directory, wrong code refused, reset done, code used up, new password works, wrong current password refused
+  Result:   PASS
+
+TC-140  QR codes: read back by an independent reader (format check, mask, Reed-Solomon check of every block, the text) for versions 1 to 10; the format bits match the standard's table
+  Expected: v1 ok, v3 ok, v6 ok, v10 ok, format M mask 0 = 101010000010010
+  Actual:   v1 ok, v3 ok, v6 ok, v10 ok, format M mask 0 = 101010000010010
+  Result:   PASS
+
+TC-141  Camera links and the weather count line: the area window can open its camera view; a weather station sends weather,TEMP,HUMIDITY
+  Expected: SEC-1 camera http://cctv.local/view?camera=sec1, weather line applied, outdoor CURB-1 CURB-2
+  Actual:   SEC-1 camera http://cctv.local/view?camera=sec1, weather line applied, outdoor CURB-1 CURB-2
+  Result:   PASS
+
 =====================================
-TOTAL: 126 passed, 0 failed
+TOTAL: 141 passed, 0 failed

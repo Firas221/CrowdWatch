@@ -11,6 +11,7 @@
   var S = {
     key: store.get('key') || '', officer: store.get('officer') || '', view: store.get('view') || 'overview',
     token: store.get('token') || '', role: store.get('role') || '', logins: false, users: null, audit: null, userMode: true,
+    rep: null, rp: null, sitesData: null, ed: null, msgs: {}, photoUrl: {}, privacy: null,
     ov: null, areas: [], incidents: [], alerts: [], units: [], venue: null, online: true,
     hist: { people: [], high: [], open: [], avail: [], review: [] }, series: {}, seeded: {}, top: [],
     sel: null, detail: null, alertFilter: 'ALL', incFilter: 'OPEN', zone: '', preview: null, lost: [], signs: [],
@@ -35,7 +36,9 @@
     review: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11', chev: 'M9 6l6 6-6 6',
     trend: 'M3 17l6-6 4 4 8-8M14 7h7v7',
     lost: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5M11 8v3l2 2',
-    sign: 'M3 11l18-5v12L3 13v-2zM11.6 16.8a3 3 0 1 1-5.8-1.6', radio: 'M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M12 12h.01'
+    sign: 'M3 11l18-5v12L3 13v-2zM11.6 16.8a3 3 0 1 1-5.8-1.6',
+    reports: 'M4 20V10M10 20V4M16 20v-8M22 20H2', replay: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 8v4l3 2', sites: 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6',
+    editor: 'M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z', heat: 'M14 14.8V4a2 2 0 1 0-4 0v10.8a4 4 0 1 0 4 0z', radio: 'M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M12 12h.01'
   };
   var LEVELS = ['LOW', 'MODERATE', 'HIGH', 'CRITICAL'];
   var PRI = { CRITICAL: 'CRITICAL', HIGH: 'HIGH', NORMAL: 'NORMAL', LOW: 'MODERATE' };
@@ -105,6 +108,8 @@
       if (!S.preview && S.ov.evacuation) waits.push(loadPreview());
       if (S.sel != null) waits.push(api('/api/incident?id=' + S.sel).then(function (d) { S.detail = d; }));
       if (S.view === 'emergency' && (S.ov.evacuation || S.zone)) waits.push(loadPreview());
+      if (S.view === 'sites') waits.push(api('/api/sites').then(function (x) { S.sitesData = x; }));
+      if (S.sel != null) waits.push(api('/api/messages?incident=' + S.sel).then(function (x) { if (Array.isArray(x)) S.msgs['i' + S.sel] = x; }));
       return Promise.all(waits);
     }).then(render).catch(function (e) { fail(e); }).then(function () { S.busy = false; });
   }
@@ -186,12 +191,18 @@
     if (o.evacuation) b += '<div class="banner evac">' + icon(I.emergency, 18) + '<span>EVACUATION of ' + esc(o.evacuation) + ' in progress. Public routes avoid the zone.</span><button data-act="go" data-arg="emergency">Open plan</button></div>';
     if (o.proposal) b += '<div class="banner sup">' + icon(I.emergency, 18) + '<span>EVACUATION PROPOSED for ' + esc(o.proposal.zone) + ': ' + esc(o.proposal.reason) + '. You decide.</span>'
       + '<button data-act="propstart">Start evacuation</button><button data-act="propdismiss">Dismiss</button></div>';
+    if (o.drill) b += '<div class="banner drill">' + icon(I.review, 18) + '<span><b>DRILL</b> - training server: nothing here is real, nothing is saved, the real venue is not affected.</span></div>';
     if (o.overdue) b += '<div class="banner sup">' + icon(I.review, 18) + '<span>' + esc(o.officer ? 'Officer check-in is OVERDUE: ' + o.officerStatus : 'No security officer is on watch.') + '</span><button data-act="checkin">Check in now</button></div>';
     $('banners').innerHTML = b;
     var nav = [['overview', 'Overview'], ['areas', 'Areas and crowd'], ['incidents', 'Incidents', o.incidents.open, o.incidents.CRITICAL ? 'CRITICAL' : 'NORMAL'],
       ['units', 'Units and scouts', o.units.UNREACHABLE || null, 'CRITICAL'], ['lost', 'Lost persons', o.lost || null, 'VIOLET'],
       ['emergency', 'SOS and evacuation', o.evacuation || o.proposal ? '!' : o.signs || null, o.evacuation || o.proposal ? 'CRITICAL' : 'MODERATE'],
-      ['alerts', 'Alerts', fresh || null, 'MODERATE'], ['settings', 'Venue settings']];
+      ['alerts', 'Alerts', fresh || null, 'MODERATE']];
+    if (can('OFFICER')) nav.push(['reports', 'Reports']);
+    nav.push(['replay', 'Replay']);
+    if (o.sites) nav.push(['sites', 'Sites']);
+    if (can('ADMIN')) nav.push(['editor', 'Venue editor']);
+    nav.push(['settings', 'Venue settings']);
     var online = o.units.online, total = o.units.total;
     $('nav').innerHTML = nav.map(function (n) {
       return '<button class="nav-btn' + (S.view === n[0] ? ' on' : '') + '" data-act="go" data-arg="' + n[0] + '">' + icon(I[n[0]], 18, 2) + '<span class="l">' + n[1] + '</span>'
@@ -205,7 +216,7 @@
   function shortStatus(s) { s = String(s || ''); var i = s.indexOf('checked in'); return i >= 0 ? s.substring(i) : s; }
 
   // ---------- render ----------
-  var TITLES = { overview: 'Overview', areas: 'Areas and crowd', incidents: 'Incidents', units: 'Units and scouts', lost: 'Lost persons', emergency: 'SOS and evacuation', alerts: 'Alerts', settings: 'Venue settings' };
+  var TITLES = { reports: 'Reports', replay: 'Replay', sites: 'Sites', editor: 'Venue editor', overview: 'Overview', areas: 'Areas and crowd', incidents: 'Incidents', units: 'Units and scouts', lost: 'Lost persons', emergency: 'SOS and evacuation', alerts: 'Alerts', settings: 'Venue settings' };
   function render() {
     renderChrome();
     if (!S.ov) return;
@@ -215,7 +226,9 @@
     if (typing && main.contains(ae)) { renderBlade(); return; }
     var keep = {}, focus = document.activeElement && document.activeElement.id;
     main.querySelectorAll('[data-keep]').forEach(function (el) { keep[el.id] = el.type === 'checkbox' ? el.checked : el.value; });
-    var body = ({ overview: vOverview, areas: vAreas, incidents: vIncidents, units: vUnits, lost: vLost, emergency: vEmergency, alerts: vAlerts, settings: vSettings }[S.view] || vOverview)();
+    if (S.view === 'editor' && S.ed && S.ed.dragging) return;   // do not redraw under a dragged area
+    var body = ({ overview: vOverview, areas: vAreas, incidents: vIncidents, units: vUnits, lost: vLost, emergency: vEmergency, alerts: vAlerts, settings: vSettings,
+      reports: vReports, replay: vReplay, sites: vSites, editor: vEditor }[S.view] || vOverview)();
     main.innerHTML = '<div class="page-head"><div><div class="crumb">CrowdWatch / ' + esc(S.ov.venue) + ' / ' + TITLES[S.view] + '</div><h1>' + TITLES[S.view] + '</h1></div>'
       + '<div class="actions"><button class="btn" data-act="report">' + icon(I.plus, 16) + 'Report incident</button>'
       + '<button class="btn" data-act="go" data-arg="emergency">' + icon(I.emergency, 16) + 'Evacuate</button>'
@@ -228,6 +241,7 @@
     var o = S.ov, c = [];
     c.push(o.automation ? ['LOW', 'Automatic dispatch ON' + (o.autoRule ? ' - ' + o.autoRule : ''), 'settings', false] : ['GRAY', 'Automatic dispatch OFF', 'settings', false]);
     if (o.proposal) c.push(['CRITICAL', 'Evacuation proposed for ' + o.proposal.zone + ' - decide now', 'emergency', true]);
+    if (o.heat && o.heat.band !== 'NONE') c.push([o.heat.band.indexOf('DANGER') >= 0 ? 'CRITICAL' : 'MODERATE', 'Heat index ' + o.heat.index + '\u00B0C - ' + o.heat.band, 'settings', o.heat.band.indexOf('DANGER') >= 0]);
     if (o.lost) c.push(['VIOLET', o.lost + ' lost person' + (o.lost > 1 ? 's' : '') + ' missing', 'lost', true]);
     if (o.signs) c.push(['MODERATE', o.signs + ' public message' + (o.signs > 1 ? 's' : '') + ' to approve', 'emergency', false]);
     if (o.stale) c.push(['GRAY', o.stale + ' area' + (o.stale > 1 ? 's' : '') + ' with doubtful sensor data', 'areas', false]);
@@ -359,7 +373,7 @@
       var p = pct(a), trend = a.ratePerMinute ? (a.ratePerMinute > 0 ? '+' : '') + a.ratePerMinute + '/min' + (a.minutesToCritical > 0 ? ', CRITICAL in ~' + a.minutesToCritical + ' min' : '') : 'steady';
       return '<tr class="click" data-act="area" data-arg="' + esc(a.id) + '"><td><b>' + esc(a.id) + '</b><div class="sub">' + esc(a.name) + '</div></td><td>' + esc(a.sector) + '</td>'
         + '<td><span class="mini"><span class="bar" style="width:' + Math.min(100, p) + '%;background:' + cssVar(a.level) + '"></span></span>' + p + '%</td>'
-        + '<td>' + fmt(a.occupancy) + ' / ' + fmt(a.capacity) + '</td><td>' + pill(a.level, a.level) + (a.evacuating ? ' ' + pill('HIGH', 'EVACUATING') : '') + (a.restricted ? ' ' + pill('GRAY', 'staff only') : '') + '</td>'
+        + '<td>' + fmt(a.occupancy) + ' / ' + fmt(a.capacity) + (a.size ? '<div class="sub">' + a.density.toFixed(1) + ' per m&sup2; (' + fmt(a.size) + ' m&sup2;)</div>' : '') + '</td><td>' + pill(a.level, a.level) + (a.evacuating ? ' ' + pill('HIGH', 'EVACUATING') : '') + (a.restricted ? ' ' + pill('GRAY', 'staff only') : '') + '</td>'
         + '<td style="color:' + (a.minutesToCritical > 0 ? cssVar('VIOLET-t') : a.ratePerMinute > 0 ? cssVar('MODERATE-t') : cssVar('sub')) + ';font-weight:' + (a.ratePerMinute ? 700 : 400) + '">' + esc(trend) + '</td>'
         + '<td>' + (a.unitsWanted ? '<b style="color:' + (a.unitsHere < a.unitsWanted ? cssVar('CRITICAL-t') : cssVar('LOW-t')) + '">' + a.unitsHere + ' of ' + a.unitsWanted + '</b>' : a.unitsHere) + '</td>'
         + '<td class="sub">' + esc(a.links.join(', ')) + '</td></tr>';
@@ -374,6 +388,8 @@
       '<form class="form" data-form="count" data-arg="' + esc(a.id) + '"><label>People counted now<input id="fCount" type="number" min="0" required value="' + a.occupancy + '"></label>'
       + '<div class="inline"><button type="button" class="btn" data-act="adj" data-arg="-10">-10</button><button type="button" class="btn" data-act="adj" data-arg="-1">-1</button><button type="button" class="btn" data-act="adj" data-arg="1">+1</button><button type="button" class="btn" data-act="adj" data-arg="10">+10</button></div>'
       + '<div class="sub">Trend: ' + (a.ratePerMinute ? a.ratePerMinute + ' people a minute' : 'steady') + '. Leads to: ' + esc(a.links.join(', ') || 'nothing') + '.</div>'
+      + (a.size ? '<div class="sub">Density: <b>' + a.density.toFixed(1) + ' people per m&sup2;</b> on ' + fmt(a.size) + ' m&sup2; (' + esc(a.densityLevel) + '). About 4 per m&sup2; is dangerous, 5 and more risks crushing.</div>' : '')
+      + (a.camera ? '<div><a class="btn" href="' + esc(a.camera) + '" target="_blank" rel="noopener noreferrer">Open the camera view</a></div>' : '')
       + '<div class="dialog-foot"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn-primary">Save count</button></div></form>');
     $('fCount').focus();
   }
@@ -423,6 +439,7 @@
       + (d.open ? '<form class="form" data-form="reassign"><div class="inline"><label>Send another unit<select id="bUnit" data-keep>' + (units.length ? units.map(function (u) { return '<option value="' + esc(u.id) + '">' + esc(u.id + ' - ' + u.name + ' (' + u.area + ')') + '</option>'; }).join('') : '<option value="">no unit available</option>') + '</select></label>'
         + '<label>Reason<input id="bReason" data-keep placeholder="optional"></label></div><button class="btn"' + (units.length ? '' : ' disabled') + '>Reassign</button></form>'
         + '<form class="form" data-form="resolve"><label>Resolve with a note<textarea id="bNote" data-keep required maxlength="300" placeholder="What was done"></textarea></label><button class="btn-primary">' + icon(I.check, 16) + ' Resolve incident</button></form>' : '')
+      + messagesBlock(S.msgs['i' + d.id] || [], d.unit ? '<form class="form" data-form="imsg"><label>Message to ' + esc(d.unit) + '<input id="bMsg" data-keep maxlength="300" placeholder="e.g. Bring the child to ARRIVALS-1"></label><button class="btn">Send</button></form>' : '')
       + '<h2>Timeline</h2><div class="timeline">' + d.history.map(function (h) { return '<div class="tl"><div class="t">' + esc(h.t) + '</div>' + esc(h.text) + '</div>'; }).join('') + '</div></div>';
     Object.keys(keep).forEach(function (id) { var el = $(id); if (el && keep[id] != null && (el.tagName !== 'SELECT' || el.querySelector('option[value="' + CSS.escape(keep[id]) + '"]'))) el.value = keep[id]; });
     if (focus && $(focus)) $(focus).focus();
@@ -441,6 +458,8 @@
         + '<span class="u-name"><b>' + esc(u.name) + '</b><span class="sub">' + esc(u.area) + ' - ' + esc(u.sector) + '</span></span>' + pill(k, u.status.replace('_', ' ')) + '</div>'
         + '<div class="sub" style="display:flex;align-items:center;gap:6px"><span class="sdot' + (u.online ? '' : '') + '" style="background:' + cssVar(u.online ? 'LOW' : 'GRAY') + '"></span>Device ' + (u.online ? 'online' : 'offline') + (u.lastContact ? ' - last contact ' + esc(u.lastContact) : ' - never connected') + '</div>'
         + (u.skills ? '<div class="sub">Skills: ' + esc(u.skills) + '</div>' : '')
+        + (u.battery >= 0 ? '<div class="sub" style="' + (u.battery <= 15 ? 'color:' + cssVar('CRITICAL-t') + ';font-weight:700' : '') + '">Phone battery ' + u.battery + '%</div>' : '')
+        + '<div><button class="btn sm" data-act="umsg" data-arg="' + esc(u.id) + '">Messages</button></div>'
         + (u.reinforcing ? '<div>' + pill('HIGH', 'REINFORCING ' + u.reinforcing) + (u.home ? ' <span class="sub">returns to ' + esc(u.home) + '</span>' : '') + '</div>' : '')
         + (u.task ? '<button class="task" data-act="inc" data-arg="' + u.task.id + '" style="cursor:pointer;text-align:left;color:inherit"><span>' + pill(PRI[u.task.priority], u.task.priority) + ' <b>I' + u.task.id + '</b> ' + esc(u.task.label) + ' at ' + esc(u.task.area) + '</span>'
           + '<span class="sub" style="color:' + (/reminder/.test(u.task.device) ? cssVar('CRITICAL-t') : '') + '">' + esc(u.task.device) + '</span></button>' : '<div class="task"><span class="sub">No task - ready to be sent</span></div>')
@@ -473,9 +492,10 @@
    * The venue drawing with every area on it in its crowd colour, the number of units there, exits with their
    * flow, and (when rows are given) the evacuation routes as arrows, thicker for more people.
    */
-  function venueMap(rows) {
+  function venueMap(rows, frame) {
     var L = S.layout, W = L.w, H = L.h, fs = Math.max(11, Math.round(W / 95));
     var byId = {}; S.areas.forEach(function (a) { byId[a.id] = a; });
+    if (frame) Object.keys(frame).forEach(function (id) { if (byId[id]) byId[id] = Object.assign({}, byId[id], { occupancy: frame[id][0], level: frame[id][1], stale: false, suspect: null, evacuating: false }); });
     var centre = {}; L.areas.forEach(function (p) { centre[p.id] = [p.x + p.w / 2, p.y + p.h / 2]; });
     var unitsAt = {}; S.units.forEach(function (u) { if (u.status !== 'OFF_DUTY') unitsAt[u.area] = (unitsAt[u.area] || 0) + 1; });
     var svg = '<svg class="venue-map" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Venue map with live crowd levels">'
@@ -648,11 +668,33 @@
       + rulesCard(v.rules)
       + '<section class="card"><h2>Incident categories</h2><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Label</th><th>Priority</th></tr></thead><tbody>'
       + v.categories.map(function (c) { return '<tr><td class="mono">' + esc(c.code) + '</td><td>' + esc(c.label) + '</td><td>' + pill(PRI[c.priority], c.priority) + '</td></tr>'; }).join('') + '</tbody></table></div></section>'
+      + toolsCard()
       + accessCard()
       + '<section class="card"><h2>This browser</h2><div class="actions"><button class="btn" data-act="theme">Switch light or dark</button><button class="btn" data-act="logout">Sign out and forget the key</button><a class="btn" href="/classic">Plain dashboard</a></div></section>';
   }
 
   // ---------- users, scout device codes and audit log ----------
+  function toolsCard() {
+    var o = S.ov, h = o.heat;
+    return '<div class="row"><section class="card narrow"><h2>Weather and heat stress</h2>'
+      + (h ? '<div><b>Heat index ' + h.index + '&deg;C</b> - ' + esc(h.band) + '<div class="sub">' + h.temp + '&deg;C, ' + h.humidity + '% humidity. Outdoor areas: ' + esc(h.outdoor.join(', ') || 'none') + '</div></div>' : '<div class="sub">No reading in the last 3 hours. A weather station can send it as a count line (weather,38,40) or enter it here.</div>')
+      + '<form class="form" data-form="weather"><div class="inline"><label>Temperature &deg;C<input id="wT" type="number" step="0.1" required data-keep></label><label>Humidity %<input id="wH" type="number" min="0" max="100" required data-keep></label></div><button class="btn">Record</button></form></section>'
+      + '<section class="card narrow"><h2>Visitor help page</h2><div class="sub">Visitors scan a QR code in an area and report a lost person, someone unwell or a person they found - in English or Arabic, without an app. Print one code per area.</div>'
+      + '<div class="actions"><button class="btn-primary" data-act="qr">Print help QR codes</button><a class="btn" href="/help" target="_blank" rel="noopener">Open the help page</a></div></section>'
+      + (S.token ? '<section class="card narrow"><h2>Your password</h2><form class="form" data-form="mypw"><label>Current password<input id="pwOld" type="password" autocomplete="current-password" required></label>'
+        + '<label>New password (at least 8 characters)<input id="pwNew" type="password" autocomplete="new-password" minlength="8" required></label><button class="btn">Change password</button></form></section>' : '')
+      + '</div>' + (can('ADMIN') ? privacyCard() : '');
+  }
+  function privacyCard() {
+    var p = S.privacy;
+    return '<section class="card"><h2>Personal data requests</h2><div class="sub">Under data-protection law (PDPL, GDPR) a person may ask for a copy of their data or for it to be deleted. Search by name, phone or e-mail; export what is found, or erase it - the rest of each record stays for statistics. Every search and erasure is in the audit log.</div>'
+      + '<form class="form" data-form="privacy"><div class="inline"><label>Name, phone or e-mail<input id="pvFind" minlength="3" required data-keep></label><button class="btn">Search</button></div></form>'
+      + (p ? '<div class="tbl-wrap"><table><thead><tr><th></th><th>Incident</th><th>Where</th><th>Details</th><th>Contact</th></tr></thead><tbody>'
+        + (p.incidents.length ? p.incidents.map(function (i) { return '<tr><td><input type="checkbox" class="pv-id" value="' + i.id + '" aria-label="Select I' + i.id + '"></td><td>I' + i.id + ' ' + esc(i.category) + '<div class="sub">' + esc(i.reported) + ' - ' + esc(i.where) + '</div></td><td>' + esc(i.area) + '</td><td>' + esc(i.details) + '</td><td>' + esc(i.contact || '') + '</td></tr>'; }).join('')
+          : '<tr><td colspan="5">Nothing found in incidents.</td></tr>') + '</tbody></table></div>'
+        + '<div class="sub">' + p.messages.length + ' message(s) found as well.</div><div class="actions"><button class="btn" data-act="pv-export">Export as a file</button><button class="btn" data-act="pv-erase">Erase the selected</button></div>' : '')
+      + '</section>';
+  }
   function accessCard() {
     if (!S.logins && S.token === '') {
       if (!can('OFFICER')) return '';
@@ -683,17 +725,192 @@
     }
     if (can('ADMIN') && S.logins !== null) {
       h += '<h2>Users</h2>' + (S.users ? '<div class="tbl-wrap"><table><thead><tr><th>User name</th><th>Role</th><th>Can sign in</th><th>Two-step</th></tr></thead><tbody>' + S.users.map(function (u) {
-          return '<tr><td class="mono">' + esc(u.name) + '</td><td>' + esc(u.role) + (u.role === 'ADMIN' && !u.twoStep ? ' <span class="pill k-MODERATE">no two-step</span>' : '') + '</td><td>' + (u.active ? 'OK' : '-') + '</td><td>' + (u.twoStep ? 'on' : '-') + '</td></tr>';
+          return '<tr><td class="mono">' + esc(u.name) + (u.directory ? ' <span class="pill k-NORMAL">directory</span>' : '') + '</td><td>' + esc(u.role) + (u.role === 'ADMIN' && !u.twoStep ? ' <span class="pill k-MODERATE">no two-step</span>' : '') + '</td><td>' + (u.active ? 'OK' : '-') + '</td><td>' + (u.twoStep ? 'on' : '-') + '</td></tr>';
         }).join('') + '</tbody></table></div>' : '')
         + '<form class="form" data-form="user"><div class="inline"><label>User name<input id="uName" data-keep required autocapitalize="none"></label>'
         + '<label>Role<select id="uRole" data-keep>' + ['OPERATOR', 'OFFICER', 'ADMIN'].map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('') + '</select></label></div>'
         + '<div class="inline"><label>Password<input id="uPass" type="password" autocomplete="new-password" placeholder="empty keeps the current password"></label>'
-        + '<label class="switch"><input type="checkbox" id="uActive" data-keep checked> Can sign in</label><label class="switch"><input type="checkbox" id="uTsOff" data-keep> Switch two-step off (lost phone)</label></div><button class="btn-primary">Save user</button></form>';
+        + '<label class="switch"><input type="checkbox" id="uActive" data-keep checked> Can sign in</label><label class="switch"><input type="checkbox" id="uTsOff" data-keep> Switch two-step off (lost phone)</label>'
+        + '<label class="switch"><input type="checkbox" id="uDir" data-keep> Signs in with the company directory (LDAP / Active Directory)</label></div><button class="btn-primary">Save user</button></form>'
+        + '<form class="form" data-form="ureset"><div class="inline"><label>Forgot password: user name<input id="urName" required data-keep></label><button class="btn">Make a reset code</button></div></form>';
     }
     return h + '</section>';
   }
   function loadMe() { return api('/api/me').then(function (me) { S.me = me; }).catch(function () { }); }
   function loadUsers() { if (!can('ADMIN')) return Promise.resolve(); return api('/api/users').then(function (u) { S.users = Array.isArray(u) ? u : null; }).catch(function () { S.users = null; }); }
+
+  // ---------- messages with scouts ----------
+  function photoImg(id) {
+    if (S.photoUrl[id]) return '<img class="msg-photo" src="' + S.photoUrl[id] + '" alt="Photo from the unit">';
+    S.photoUrl[id] = 'about:blank';
+    fetch('/api/photo?id=' + id, { headers: auth() }).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { if (b) { S.photoUrl[id] = URL.createObjectURL(b); render(); } });
+    return '<span class="sub">loading photo...</span>';
+  }
+  function messagesBlock(list, form) {
+    return '<h2>Messages</h2><div class="msgs">' + (list.length ? list.map(function (x) {
+      return '<div class="msg ' + (x.fromUnit ? 'in' : 'out') + '"><div class="sub">' + esc(x.time.replace('T', ' ').substring(11, 16)) + ' - ' + esc(x.fromUnit ? x.unit : x.by) + '</div>' + esc(x.text)
+        + (x.photo && S.photoUrl[x.id] !== 'about:blank' ? photoImg(x.id) : x.photo ? '<span class="sub">photo</span>' : '') + '</div>';
+    }).join('') : '<div class="sub">No messages yet.</div>') + '</div>' + form;
+  }
+  function unitMessages(id) {
+    api('/api/messages?unit=' + encodeURIComponent(id)).then(function (list) {
+      list = Array.isArray(list) ? list : [];
+      // load the photos first, so the window shows them straight away
+      return Promise.all(list.filter(function (x) { return x.photo && !S.photoUrl[x.id]; }).map(function (x) {
+        return fetch('/api/photo?id=' + x.id, { headers: auth() }).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { if (b) S.photoUrl[x.id] = URL.createObjectURL(b); });
+      })).then(function () { return list; });
+    }).then(function (list) {
+      modal('blue', 'Messages with ' + id, 'Texts and photos between the unit and the control room',
+        messagesBlock(Array.isArray(list) ? list : [], '<form class="form" data-form="umsg" data-arg="' + esc(id) + '"><label>Message<input id="mText" maxlength="300" required></label>'
+          + '<div class="dialog-foot"><button type="button" class="btn" data-act="close">Close</button><button class="btn-primary">Send</button></div></form>'));
+    }).catch(fail);
+  }
+
+  // ---------- reports ----------
+  function isoDay(d) { return d.toISOString().substring(0, 10); }
+  function vReports() {
+    var r = S.rep && S.rep.data, today = new Date(), weekAgo = new Date(Date.now() - 6 * 86400000);
+    var head = '<section class="card"><div class="card-head"><div><h2>Reports</h2><span class="sub">Busiest times, incidents, how quickly units acknowledged and arrived, missed check-ins</span></div></div>'
+      + '<form class="form" data-form="report-load"><div class="inline"><label>From<input id="rpFrom" type="date" data-keep value="' + (S.rep ? S.rep.from : isoDay(weekAgo)) + '"></label>'
+      + '<label>To<input id="rpTo" type="date" data-keep value="' + (S.rep ? S.rep.to : isoDay(today)) + '"></label><button class="btn-primary">Show</button>'
+      + '<button type="button" class="btn" data-act="report-csv">Download for Excel (CSV)</button><button type="button" class="btn" data-act="report-print">Print / save as PDF</button></div></form></section>';
+    if (!r) return head + '<section class="card"><div class="empty">Choose the period and press Show.</div></section>';
+    var k = function (label, v) { return '<div><div class="kpi-value">' + esc(v) + '</div><div class="sub">' + esc(label) + '</div></div>'; };
+    var mx = Math.max.apply(null, r.hourly.concat([1]));
+    return head + '<section class="card"><h2>Response</h2><div style="display:flex;gap:26px;flex-wrap:wrap">'
+      + k('incidents', r.incidents) + k('automatic', r.automatic) + k('median minutes to acknowledge', r.ackMedian < 0 ? '-' : r.ackMedian)
+      + k('90% acknowledged within (min)', r.ackP90 < 0 ? '-' : r.ackP90) + k('median minutes to on scene', r.sceneMedian < 0 ? '-' : r.sceneMedian)
+      + k('90% on scene within (min)', r.sceneP90 < 0 ? '-' : r.sceneP90) + k('check-in overdue', r.overdue) + k('unit did not answer', r.noAnswer) + k('SOS', r.sos) + '</div></section>'
+      + '<div class="row"><section class="card wide"><h2>Busiest areas</h2><div class="tbl-wrap"><table><thead><tr><th>Area</th><th>Peak</th><th>When</th><th>Busiest hour</th></tr></thead><tbody>'
+      + (r.areas.length ? r.areas.map(function (a) { return '<tr><td><b>' + esc(a.id) + '</b><div class="sub">' + esc(a.name) + '</div></td><td>' + fmt(a.peak) + ' (' + a.peakPct + '%)</td><td>' + esc(a.peakAt) + '</td><td>' + esc(a.busiestHour) + ' (' + a.busiestPct + '%)</td></tr>'; }).join('')
+        : '<tr><td colspan="4">No counts recorded in this period.</td></tr>') + '</tbody></table></div></section>'
+      + '<section class="card narrow"><h2>People on site by hour</h2><div class="hours">' + r.hourly.map(function (v, h) {
+        return '<div class="hr"><span class="sub">' + ('0' + h).slice(-2) + '</span><span class="mini" style="width:140px"><span class="bar" style="width:' + Math.round(v * 100 / mx) + '%;background:' + cssVar('NORMAL') + '"></span></span><span>' + fmt(v) + '</span></div>';
+      }).join('') + '</div></section></div>'
+      + '<div class="row"><section class="card narrow"><h2>Incidents per day</h2><div class="tbl-wrap"><table><tbody>' + (r.days.map(function (d) { return '<tr><td>' + esc(d.day) + '</td><td><b>' + d.incidents + '</b></td></tr>'; }).join('') || '<tr><td>none</td></tr>') + '</tbody></table></div></section>'
+      + '<section class="card wide"><h2>By category</h2><div class="tbl-wrap"><table><thead><tr><th>Category</th><th>Incidents</th><th>Median to on scene</th></tr></thead><tbody>'
+      + (r.categories.map(function (c) { return '<tr><td>' + esc(c.category) + '</td><td>' + c.incidents + '</td><td>' + (c.sceneMedian < 0 ? '-' : c.sceneMedian + ' min') + '</td></tr>'; }).join('') || '<tr><td colspan="3">none</td></tr>') + '</tbody></table></div></section></div>';
+  }
+  function reportUrl(fmtName) { return '/api/report?from=' + encodeURIComponent($('rpFrom').value) + '&to=' + encodeURIComponent($('rpTo').value) + '&format=' + fmtName; }
+  function download(url, name) {
+    return fetch(url, { headers: auth() }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); }).then(function (b) {
+      var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    }).catch(fail);
+  }
+  function openPage(url) {
+    var w = window.open('', '_blank');
+    return fetch(url, { headers: auth() }).then(function (r) { return r.text(); }).then(function (t) {
+      var u = URL.createObjectURL(new Blob([t], { type: 'text/html' }));
+      if (w) w.location = u; else window.location = u;
+    }).catch(fail);
+  }
+
+  // ---------- replay ----------
+  function localIso(d) { var z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().substring(0, 16); }
+  function vReplay() {
+    var rp = S.rp, now = new Date();
+    var head = '<section class="card"><div class="card-head"><div><h2>Replay</h2><span class="sub">How the crowd moved, minute by minute, with the alerts of the time - for reviews after an event (up to 24 hours at a time)</span></div></div>'
+      + '<form class="form" data-form="replay-load"><div class="inline"><label>From<input id="rpS" type="datetime-local" data-keep value="' + (rp ? rp.fromIn : localIso(new Date(now - 3600000))) + '"></label>'
+      + '<label>To<input id="rpE" type="datetime-local" data-keep value="' + (rp ? rp.toIn : localIso(now)) + '"></label><button class="btn-primary">Load</button></div></form></section>';
+    if (!rp) return head + '<section class="card"><div class="empty">Choose a period and press Load.</div></section>';
+    if (!rp.frames.length) return head + '<section class="card"><div class="empty">No counts were recorded in this period.</div></section>';
+    var f = rp.frames[Math.min(rp.idx, rp.frames.length - 1)], people = 0, lv = { LOW: 0, MODERATE: 0, HIGH: 0, CRITICAL: 0 };
+    Object.keys(f.areas).forEach(function (id) { people += f.areas[id][0]; lv[f.areas[id][1]]++; });
+    var shown = rp.alerts.filter(function (a) { return a.time <= f.t + ':59'; }).slice(0, 8);
+    return head + '<div class="row"><section class="card wide"><div class="card-head"><div><h2>' + esc(f.t.replace('T', ' ')) + '</h2><span class="sub">' + fmt(people) + ' people on site - '
+      + lv.HIGH + ' HIGH, ' + lv.CRITICAL + ' CRITICAL</span></div><div class="actions"><button class="btn" data-act="rp-play">' + (rp.timer ? 'Pause' : 'Play') + '</button>' + legend() + '</div></div>'
+      + '<input id="rpSlider" type="range" min="0" max="' + (rp.frames.length - 1) + '" value="' + rp.idx + '" style="width:100%" aria-label="Minute">'
+      + (hasMap() ? venueMap(null, f.areas) : lanes()) + '</section>'
+      + '<section class="card narrow"><h2>Alerts until then</h2>' + (shown.map(alertRow).join('') || '<div class="empty">No alerts yet.</div>') + '</section></div>';
+  }
+
+  // ---------- sites of a head office ----------
+  function vSites() {
+    var list = S.sitesData;
+    if (!list) return '<section class="card"><div class="empty">Loading the sites...</div></section>';
+    if (!list.length) return '<section class="card"><div class="empty">No sites yet. Add them on the server: java -jar CrowdWatch.jar --site add NAME http://address:8080 CONTROL-KEY</div></section>';
+    return '<div class="units">' + list.map(function (x) {
+      var o = x.overview;
+      if (!o) return '<section class="card"><h2>' + esc(x.name) + '</h2>' + pill('CRITICAL', 'NOT ANSWERING') + '<div class="sub">' + esc(x.url) + ' - ' + esc(x.problem || '') + '</div></section>';
+      var worst = o.levels.CRITICAL ? 'CRITICAL' : o.levels.HIGH ? 'HIGH' : o.levels.MODERATE ? 'MODERATE' : 'LOW';
+      return '<section class="card"><div class="card-head"><h2>' + esc(x.name) + '</h2>' + pill(worst, worst) + '</div><div class="sub">' + esc(o.venue) + '</div>'
+        + '<div style="display:flex;gap:18px;flex-wrap:wrap"><div><div class="kpi-value">' + fmt(o.people) + '</div><div class="sub">people</div></div>'
+        + '<div><div class="kpi-value">' + (o.levels.HIGH + o.levels.CRITICAL) + '</div><div class="sub">areas HIGH or CRITICAL</div></div>'
+        + '<div><div class="kpi-value">' + o.incidents.open + '</div><div class="sub">open incidents</div></div></div>'
+        + (o.evacuation ? pill('HIGH', 'EVACUATING ' + o.evacuation) : '') + (o.drill ? pill('VIOLET', 'DRILL') : '')
+        + '<div class="sub">Officer: ' + esc(o.officer || 'nobody') + (o.overdue ? ' - check-in OVERDUE' : '') + '</div><div><a class="btn" href="' + esc(x.url) + '" target="_blank" rel="noopener">Open this site</a></div></section>';
+    }).join('') + '</div>';
+  }
+
+  // ---------- venue editor ----------
+  function edPos(id) {
+    if (S.ed.pos[id]) return S.ed.pos[id];
+    var p = S.layout.areas.filter(function (a) { return a.id === id; })[0];
+    return p ? [p.x, p.y, p.w, p.h] : null;
+  }
+  function vEditor() {
+    if (!hasMap()) return '<section class="card"><div class="empty">This venue has no drawing (map: line), so there is nothing to place areas on. Add a map: line to the venue file first.</div></section>';
+    if (!S.ed) { S.ed = { pos: {}, added: [], sel: null, text: null }; api('/api/venuefile').then(function (t) { S.ed.text = typeof t === 'string' ? t : t.message; }).catch(fail); }
+    var L = S.layout, W = L.w, H = L.h, ids = L.areas.map(function (a) { return a.id; }).concat(S.ed.added.map(function (a) { return a.id; }));
+    var svg = '<svg id="edMap" class="venue-map" viewBox="0 0 ' + W + ' ' + H + '" style="touch-action:none">' + (S.mapUrl ? '<image href="' + S.mapUrl + '" width="' + W + '" height="' + H + '"/>' : '<rect width="' + W + '" height="' + H + '" fill="' + cssVar('tint') + '"/>');
+    ids.forEach(function (id) {
+      var p = edPos(id), on = S.ed.sel === id, moved = !!S.ed.pos[id];
+      svg += '<g data-ed="' + esc(id) + '"><rect x="' + p[0] + '" y="' + p[1] + '" width="' + p[2] + '" height="' + p[3] + '" rx="6" fill="' + cssVar(on ? 'NORMAL' : moved ? 'VIOLET' : 'LOW') + '" fill-opacity="0.3" stroke="' + cssVar(on ? 'NORMAL' : 'LOW') + '" stroke-width="' + (on ? 4 : 2) + '" style="cursor:move"/>'
+        + '<text x="' + (p[0] + 6) + '" y="' + (p[1] + 18) + '" font-size="16" font-weight="800" fill="' + cssVar('text') + '" pointer-events="none">' + esc(id) + '</text>'
+        + '<rect data-ed-size="' + esc(id) + '" x="' + (p[0] + p[2] - 14) + '" y="' + (p[1] + p[3] - 14) + '" width="14" height="14" fill="' + cssVar('NORMAL') + '" style="cursor:nwse-resize"/></g>';
+    });
+    svg += '</svg>';
+    var p = S.ed.sel ? edPos(S.ed.sel) : null;
+    return '<div class="row"><section class="card wide"><div class="card-head"><div><h2>Venue editor</h2><span class="sub">Drag an area to move it, drag its blue corner to resize it; click it to type exact numbers. Moved areas turn violet.</span></div></div>' + svg + '</section>'
+      + '<section class="card narrow"><h2>' + (p ? esc(S.ed.sel) : 'No area selected') + '</h2>'
+      + (p ? '<form class="form" data-form="ed-pos"><div class="inline"><label>x<input id="edX" type="number" value="' + Math.round(p[0]) + '"></label><label>y<input id="edY" type="number" value="' + Math.round(p[1]) + '"></label></div>'
+        + '<div class="inline"><label>width<input id="edW" type="number" min="10" value="' + Math.round(p[2]) + '"></label><label>height<input id="edH" type="number" min="10" value="' + Math.round(p[3]) + '"></label></div><button class="btn">Apply</button></form>' : '<div class="sub">Click an area on the drawing.</div>')
+      + '<h2>Add an area</h2><form class="form" data-form="ed-add"><div class="inline"><label>ID<input id="edId" required maxlength="20" placeholder="GATE-D" data-keep></label><label>Capacity<input id="edCap" type="number" min="1" required data-keep></label></div>'
+      + '<label>Name<input id="edName" required maxlength="60" data-keep></label><div class="inline"><label>Sector<input id="edSector" required data-keep></label><label>Type<input id="edType" value="HALL" data-keep></label></div>'
+      + '<label>Floor area m&sup2; (optional)<input id="edSize" type="number" min="1" data-keep></label><div class="sub">It appears in the middle of the drawing; drag it into place. Link it to its neighbours in the venue file (link: lines).</div><button class="btn">Add</button></form>'
+      + '<h2>Save</h2><div class="sub">' + (Object.keys(S.ed.pos).length + S.ed.added.length) + ' change(s). The venue file gets new pos: lines (and area: lines for new areas); everything else stays as it is.</div>'
+      + '<div class="actions"><button class="btn" data-act="ed-download">Download venue file</button><button class="btn-primary" data-act="ed-save">Save on the server</button></div></section></div>';
+  }
+  function editedVenueText() {
+    var changed = Object.keys(S.ed.pos), lines = String(S.ed.text || '').split(/\r?\n/).filter(function (l) {
+      var m = /^\s*(pos|shape):\s*(\S+)/i.exec(l);
+      return !(m && changed.indexOf(m[2].toUpperCase()) >= 0);
+    });
+    var out = lines.join('\n').replace(/\s+$/, '') + '\n\n# set in the venue editor on ' + new Date().toISOString().substring(0, 16).replace('T', ' ') + '\n';
+    S.ed.added.forEach(function (a) { out += 'area: ' + a.id + ' | ' + a.name + ' | ' + a.sector + ' | ' + a.type + ' | ' + a.capacity + '\n' + (a.size ? 'size: ' + a.id + ' ' + a.size + '\n' : ''); });
+    changed.forEach(function (id) { var p = S.ed.pos[id]; out += 'pos: ' + id + ' ' + p.map(function (v) { return Math.round(v); }).join(' ') + '\n'; });
+    return out;
+  }
+  // dragging in the editor
+  function svgPoint(svg, e) { var pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+  document.addEventListener('pointerdown', function (e) {
+    var svg = e.target.closest && e.target.closest('#edMap');
+    if (!svg) return;
+    var size = e.target.getAttribute('data-ed-size'), g = e.target.closest('[data-ed]');
+    if (!g) return;
+    var id = g.getAttribute('data-ed'), p = edPos(id).slice(), start = svgPoint(svg, e);
+    if (S.ed.sel !== id) { S.ed.sel = id; }
+    S.ed.sel = id; S.ed.dragging = { id: id, mode: size ? 'size' : 'move', p: p, start: start, svg: svg, moved: false };
+    e.preventDefault();
+  });
+  document.addEventListener('pointermove', function (e) {
+    var d = S.ed && S.ed.dragging;
+    if (!d) return;
+    var pt = svgPoint(d.svg, e), dx = pt.x - d.start.x, dy = pt.y - d.start.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) d.moved = true;
+    var p = d.mode === 'move' ? [d.p[0] + dx, d.p[1] + dy, d.p[2], d.p[3]] : [d.p[0], d.p[1], Math.max(20, d.p[2] + dx), Math.max(20, d.p[3] + dy)];
+    var g = d.svg.querySelector('[data-ed="' + CSS.escape(d.id) + '"]'), r = g.querySelector('rect'), t = g.querySelector('text'), h = g.querySelector('[data-ed-size]');
+    r.setAttribute('x', p[0]); r.setAttribute('y', p[1]); r.setAttribute('width', p[2]); r.setAttribute('height', p[3]);
+    t.setAttribute('x', p[0] + 6); t.setAttribute('y', p[1] + 18); h.setAttribute('x', p[0] + p[2] - 14); h.setAttribute('y', p[1] + p[3] - 14);
+    d.now = p;
+  });
+  document.addEventListener('pointerup', function () {
+    var d = S.ed && S.ed.dragging;
+    if (!d) return;
+    if (d.moved && d.now) S.ed.pos[d.id] = d.now;
+    S.ed.dragging = null;
+    render();
+  });
 
   // ---------- dialogs, toast ----------
   function modal(color, title, sub, body) {
@@ -701,7 +918,7 @@
     m.innerHTML = '<div class="dialog" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><div class="dialog-head ' + color + '"><h2>' + esc(title) + '</h2><span class="sub">' + esc(sub) + '</span></div><div class="dialog-body">' + body + '</div></div>';
     m.hidden = false;
   }
-  function closeModal() { $('modal').hidden = true; $('modal').innerHTML = ''; }
+  function closeModal() { $('modal').hidden = true; $('modal').innerHTML = ''; if (!S.ov) { $('app').hidden = true; $('login').hidden = false; } }
   function reportDialog() {
     var v = S.venue;
     modal('blue', 'Report incident', 'It is sent to the nearest free unit with the right skills',
@@ -767,10 +984,31 @@
       case 'handover': handoverDialog(); break;
       case 'countreset': if (confirm('Reset the count check? Only do this after a full recount: the total now becomes the new starting point.')) act('/api/countcheck/reset', {}); break;
       case 'plan': S.planMode = arg; store.set('planMode', arg); render(); break;
+      case 'umsg': unitMessages(arg); break;
+      case 'report-csv': download(reportUrl('csv'), 'crowdwatch-report.csv'); break;
+      case 'report-print': openPage(reportUrl('html')); break;
+      case 'qr': openPage('/api/qr'); break;
+      case 'rp-play':
+        if (S.rp.timer) { clearInterval(S.rp.timer); S.rp.timer = null; }
+        else S.rp.timer = setInterval(function () { if (!S.rp || S.view !== 'replay' || S.rp.idx >= S.rp.frames.length - 1) { clearInterval(S.rp && S.rp.timer); if (S.rp) S.rp.timer = null; render(); return; } S.rp.idx++; render(); }, 400);
+        render(); break;
+      case 'pv-export': download('/api/privacy/export?find=' + encodeURIComponent(S.privacy.find), 'crowdwatch-personal-data.json'); break;
+      case 'pv-erase':
+        var ids = Array.prototype.map.call(document.querySelectorAll('.pv-id:checked'), function (c) { return c.value; });
+        if (!ids.length) { toast('Select the incidents to erase first.', 'bad'); break; }
+        if (confirm('Erase the personal data of ' + ids.length + ' incident(s)? This cannot be undone.')) act('/api/privacy/erase', { ids: ids.join(',') }, function () { S.privacy = null; });
+        break;
+      case 'ed-download':
+        var blob = new Blob([editedVenueText()], { type: 'text/plain' }), a2 = document.createElement('a');
+        a2.href = URL.createObjectURL(blob); a2.download = (S.venue && S.venue.code || 'venue') + '.venue'; document.body.appendChild(a2); a2.click(); a2.remove(); break;
+      case 'ed-save': act('/api/venuefile', { text: editedVenueText() }); break;
       case 'audit': api('/api/audit').then(function (r) { if (Array.isArray(r)) S.audit = r; else toast(r.message, 'bad'); render(); }).catch(fail); break;
       case 'twostep': api('/api/twostep/start', {}).then(function (r) { if (r.ok) S.twoStep = r; else toast(r.message, 'bad'); render(); }).catch(fail); break;
       case 'devrevoke': act('/api/devices/revoke', { unit: $('dcUnit').value }); break;
     }
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target.id === 'rpSlider' && S.rp) { S.rp.idx = parseInt(e.target.value, 10); var keepFocus = true; render(); if (keepFocus && $('rpSlider')) $('rpSlider').focus(); }
   });
   document.addEventListener('change', function (e) {
     if (e.target.id === 'eZone') { S.zone = e.target.value; S.preview = null; if (S.zone) loadPreview().then(render); else render(); }
@@ -800,7 +1038,33 @@
         }).catch(fail); break;
       case 'twostepok': act('/api/twostep/confirm', { code: v('tsCode') }, function () { S.twoStep = null; loadMe().then(render); }); break;
       case 'twostepoff': act('/api/twostep/off', { code: v('tsOff') }, function () { loadMe().then(render); }); break;
-      case 'user': act('/api/users', { name: v('uName'), role: v('uRole'), password: $('uPass').value || null, active: $('uActive').checked ? '1' : '0', twostep: $('uTsOff').checked ? 'off' : null }, function () { $('uPass').value = ''; loadUsers().then(render); }); break;
+      case 'user': act('/api/users', { name: v('uName'), role: v('uRole'), password: $('uPass').value || null, active: $('uActive').checked ? '1' : '0', twostep: $('uTsOff').checked ? 'off' : null, directory: $('uDir').checked ? '1' : null }, function () { $('uPass').value = ''; loadUsers().then(render); }); break;
+      case 'imsg': act('/api/message', { unit: S.detail.unit, incident: S.sel, text: v('bMsg') }, function () { $('bMsg').value = ''; }); break;
+      case 'umsg': act('/api/message', { unit: e.target.getAttribute('data-arg'), text: v('mText') }, function () { unitMessages(e.target.getAttribute('data-arg')); }); break;
+      case 'weather': act('/api/weather', { temp: v('wT'), humidity: v('wH') }); break;
+      case 'mypw': act('/api/password', { current: $('pwOld').value, password: $('pwNew').value }, function () { $('pwOld').value = ''; $('pwNew').value = ''; }); break;
+      case 'ureset': api('/api/users/reset', { name: v('urName') }).then(function (r) {
+          if (!r.ok) { toast(r.message, 'bad'); return; }
+          modal('blue', 'Reset code', v('urName'), '<div class="form"><div>Give this code to ' + esc(v('urName')) + ' in person or by phone. On the sign-in page they choose "Forgot password?" and set a new password with it. It works once, for ' + r.minutes + ' minutes.</div><div><span class="code-big">' + esc(r.code) + '</span></div><div class="dialog-foot"><button class="btn-primary" data-act="close">Close</button></div></div>');
+        }).catch(fail); break;
+      case 'privacy': api('/api/privacy?find=' + encodeURIComponent(v('pvFind'))).then(function (r) { if (r.incidents) { S.privacy = r; render(); } else toast(r.message, 'bad'); }).catch(fail); break;
+      case 'report-load': S.rep = { from: v('rpFrom'), to: v('rpTo') }; api(reportUrl('json')).then(function (r) { if (r.areas) { S.rep.data = r; render(); } else toast(r.message, 'bad'); }).catch(fail); break;
+      case 'replay-load':
+        if (S.rp && S.rp.timer) clearInterval(S.rp.timer);
+        var f1 = v('rpS'), f2 = v('rpE');
+        api('/api/replay?from=' + encodeURIComponent(f1 + ':00') + '&to=' + encodeURIComponent(f2 + ':00')).then(function (r) {
+          if (!r.frames) { toast(r.message, 'bad'); return; }
+          S.rp = { frames: r.frames, alerts: r.alerts.slice().reverse(), idx: 0, fromIn: f1, toIn: f2 }; render();
+        }).catch(fail); break;
+      case 'ed-pos': S.ed.pos[S.ed.sel] = [+v('edX'), +v('edY'), Math.max(10, +v('edW')), Math.max(10, +v('edH'))]; render(); break;
+      case 'ed-add':
+        var nid = v('edId').toUpperCase();
+        if (S.venue.areas.indexOf(nid) >= 0 || S.ed.added.some(function (a) { return a.id === nid; })) { toast('There is already an area ' + nid + '.', 'bad'); break; }
+        S.ed.added.push({ id: nid, name: v('edName'), sector: v('edSector'), type: v('edType') || 'HALL', capacity: v('edCap'), size: v('edSize') });
+        S.ed.pos[nid] = [S.layout.w / 2 - 80, S.layout.h / 2 - 50, 160, 100]; S.ed.sel = nid; render(); break;
+      case 'pwreset':
+        fetch('/api/password/reset', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ user: v('rsUser'), code: v('rsCode'), password: $('rsPass').value }).toString() })
+          .then(function (r) { return r.json(); }).then(function (r) { toast(r.message, r.ok ? 'good' : 'bad'); if (r.ok) closeModal(); }).catch(fail); break;
       case 'lostreport': act('/api/incidents', { category: lostCategory(), area: v('lArea'), details: v('lDetails'), contact: v('lContact') || null, language: v('lLang') || null },
         function () { $('lDetails').value = ''; }); break;
     }
@@ -861,6 +1125,13 @@
     fetch('/api/me').then(function (r) { return r.json(); }).then(function (me) { S.logins = !!me.logins; loginMode(S.logins); }).catch(function () { loginMode(false); });
   }
   $('lgSwitch').addEventListener('click', function () { loginMode(!S.userMode); });
+  $('lgForgot').addEventListener('click', function () {
+    $('app').hidden = false; $('login').hidden = true;
+    modal('blue', 'Forgot password?', 'Ask an administrator for a reset code first',
+      '<form class="form" data-form="pwreset"><label>User name<input id="rsUser" required autocapitalize="none" value="' + esc($('lgUser').value) + '"></label><label>Reset code<input id="rsCode" required autocapitalize="characters"></label>'
+      + '<label>New password (at least 8 characters)<input id="rsPass" type="password" minlength="8" required autocomplete="new-password"></label>'
+      + '<div class="dialog-foot"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn-primary">Set the new password</button></div></form>');
+  });
   $('loginForm').addEventListener('submit', function (e) {
     e.preventDefault();
     $('lgErr').textContent = '';

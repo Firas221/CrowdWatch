@@ -306,3 +306,14 @@ html[dir="rtl"] .tl { padding: 0 16px 12px 0; }
 .audit td.bad { color: var(--CRITICAL-t); font-weight: 700; }
 .role-tag { display: inline-block; padding: 1px 8px; border-radius: 8px; background: var(--track); font-size: 11px; font-weight: 700; margin-inline-start: 6px; }
 .code-big { font: 700 26px/1.2 ui-monospace, Consolas, monospace; letter-spacing: 3px; padding: 10px 14px; border-radius: 10px; background: var(--track); display: inline-block; direction: ltr; }
+
+/* drill, messages, reports, editor */
+.banner.drill { background: repeating-linear-gradient(135deg, #7C3AED, #7C3AED 14px, #6D28D9 14px, #6D28D9 28px); color: #fff; }
+.msgs { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow: auto; }
+.msg { padding: 8px 10px; border-radius: 12px; max-width: 85%; font-size: 13.5px; background: var(--track); }
+.msg.in { align-self: flex-start; } .msg.out { align-self: flex-end; background: rgba(47,124,246,.18); }
+.msg-photo { display: block; max-width: 100%; max-height: 220px; border-radius: 8px; margin-top: 6px; }
+.hours { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+.hours .hr { display: flex; align-items: center; gap: 8px; }
+.btn.sm { height: 30px; padding: 0 10px; font-size: 12.5px; }
+#edMap { width: 100%; height: auto; user-select: none; }

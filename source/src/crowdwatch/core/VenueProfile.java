@@ -27,6 +27,24 @@ public class VenueProfile {
     public String code = "venue";
     // percentages where MODERATE, HIGH and CRITICAL start
     public int[] thresholds = { 50, 75, 90 };
+    // people per square metre for MODERATE, HIGH and CRITICAL in areas with a known size (density: line);
+    // about 4 per m2 is where crowds become dangerous, 5 and more risks crushing
+    public double[] density = { 2.0, 4.0, 5.0 };
+    // floor areas in square metres: { id, m2 } (size: lines)
+    public final LinkedList<String[]> sizes = new LinkedList<>();
+    // live camera views: { id, url } (camera: lines); opened from the console's area window
+    public final LinkedList<String[]> cameras = new LinkedList<>();
+    // areas in the open air (outdoor: line); without it COURTYARD, PLAZA and ENTRANCE areas count as outdoor
+    public final LinkedList<String> outdoor = new LinkedList<>();
+    // web address that receives urgent alerts nobody dealt with (notify: URL [minutes]), and after how many minutes
+    public String notifyUrl;
+    public int notifyMinutes = 3;
+
+    /** @return the camera page of an area, or null */
+    public String cameraOf(String areaId) {
+        for (String[] c : cameras) if (c[0].equalsIgnoreCase(areaId)) return c[1];
+        return null;
+    }
     // raw fields of each line, by keyword
     public final LinkedList<String[]> areas = new LinkedList<>();
     public final LinkedList<String[]> links = new LinkedList<>();
@@ -181,6 +199,32 @@ public class VenueProfile {
                     if (f.length < 2 || !(f[0].equalsIgnoreCase("folder") || f[0].equalsIgnoreCase("poll") || f[0].equalsIgnoreCase("tcp")))
                         throw new IllegalArgumentException("Line " + (i + 1) + ": feed must be 'folder <path> [s]', 'poll <url> [s] [token-variable]' or 'tcp <port> [addresses]'");
                     p.feeds.addLast(value.trim());
+                }
+                case "density" -> {
+                    String[] f = need(fields(value, "\\s+"), 3, i);
+                    for (int k = 0; k < 3; k++) {
+                        try { p.density[k] = Double.parseDouble(f[k]); } catch (NumberFormatException e) { throw new IllegalArgumentException("Line " + (i + 1) + ": density needs three numbers (people per m2)"); }
+                    }
+                    if (!(p.density[0] > 0 && p.density[0] < p.density[1] && p.density[1] < p.density[2]))
+                        throw new IllegalArgumentException("Line " + (i + 1) + ": density must rise: MODERATE < HIGH < CRITICAL");
+                }
+                case "outdoor" -> { for (String o : fields(value, "\\s+")) if (!o.isEmpty()) p.outdoor.addLast(o.toUpperCase()); }
+                case "notify" -> {
+                    String[] f = fields(value, "\\s+");
+                    if (f.length == 0 || !f[0].matches("(?i)https?://\\S+")) throw new IllegalArgumentException("Line " + (i + 1) + ": notify needs the http:// or https:// address of an SMS, WhatsApp or e-mail gateway");
+                    p.notifyUrl = f[0];
+                    if (f.length > 1) p.notifyMinutes = Math.max(1, minutes(f[1], i));
+                }
+                case "camera" -> {
+                    String[] f = need(fields(value, "\\s+"), 2, i);
+                    if (!f[1].matches("(?i)https?://\\S+")) throw new IllegalArgumentException("Line " + (i + 1) + ": camera needs an http:// or https:// address of the camera's web view");
+                    p.cameras.addLast(new String[] { f[0].toUpperCase(), f[1] });
+                }
+                case "size" -> {
+                    String[] f = need(fields(value, "\\s+"), 2, i);
+                    number(f[1], i);
+                    if (Double.parseDouble(f[1]) <= 0) throw new IllegalArgumentException("Line " + (i + 1) + ": size must be a positive number of square metres");
+                    p.sizes.addLast(new String[] { f[0].toUpperCase(), f[1] });
                 }
                 case "retention" -> p.retentionDays = minutes(value.trim().toLowerCase().replaceAll("d$", ""), i);
                 case "gateway" -> p.gateway = value;

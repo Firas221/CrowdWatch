@@ -58,6 +58,12 @@ area: S-YARD | South courtyard (Quba road side) | Madinah | COURTYARD | 30000
 area: W-YARD | West courtyard | Madinah | COURTYARD | 30000
 area: E-YARD | East courtyard (Al-Baqi side) | Madinah | COURTYARD | 25000
 
+# floor areas in square metres (ESTIMATES, not official): in the Mataf and the Mas'a the density matters most
+size: MATAF 12500
+size: MASAA 9000
+size: RAWDAH 600
+size: KA-GATE 2200
+
 # where each area is on the drawing: x y width height (map units)
 pos: MATAF-UP 330 300 340 340
 pos: MATAF 390 360 220 220

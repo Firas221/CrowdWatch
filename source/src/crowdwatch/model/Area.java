@@ -26,6 +26,8 @@ public class Area {
     public final boolean restricted;
     // current people count
     public int occupancy;
+    // floor area in square metres (size: line), 0 if not known; with it the level also follows the density
+    public double sizeM2;
     public CrowdLevel level = CrowdLevel.LOW;
     // who supplied the latest count or level (sensor, staff, ...)
     public Source source;
@@ -95,6 +97,9 @@ public class Area {
 
     /** @return occupancy as a whole percentage of capacity (0 if capacity is not positive) */
     public int percent() { return capacity <= 0 ? 0 : (int) Math.round(occupancy * 100.0 / capacity); }
+
+    /** @return people per square metre, or 0 if the area's size is not known */
+    public double density() { return sizeM2 <= 0 ? 0 : occupancy / sizeM2; }
 
     /**
      * Measures how fast the area is filling, in people per minute.

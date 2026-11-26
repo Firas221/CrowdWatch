@@ -28,6 +28,9 @@ public class Unit {
     public final CircularBuffer<UnitMessage> inbox = new CircularBuffer<>(20);
     // last time the unit's device contacted the system, null if never
     public LocalDateTime lastContact;
+    // battery of the unit's phone in percent as it last reported it, -1 if unknown; warned once when low
+    public int battery = -1;
+    public boolean batteryWarned;
     // working hours from the venue file, e.g. "06:00-14:00"; null for no shift
     public String shift;
     // true if the shift rule set this unit OFF_DUTY (it comes back at its next shift)

@@ -18,7 +18,7 @@ Server:    program/run-server.bat        -> control room browsers open http://<t
 HTTPS:     add --https (or set CROWDWATCH_HTTPS=1 for run-server): uses crowdwatch-data/tls/server.p12 (-Dcrowdwatch.keystore=...,
            password in CROWDWATCH_KEYSTORE_PASSWORD) or makes a self-signed certificate (browsers warn once until trusted)
 Arabic:    the web console and the scout page have a language button (العربية): right to left, kept per browser
-Tests:     program/run-tests.bat (or ./run-tests.sh) -> 126 cases, see test-evidence/test-output.txt
+Tests:     program/run-tests.bat (or ./run-tests.sh) -> 141 cases, see test-evidence/test-output.txt
 New venue: copy examples/template.venue, edit, open via Venue > Open venue file
 Scouts:    issued phones/tablets open http://<server>:8080/scout (task, route and route map, Acknowledge, On scene, Resolved, SOS,
            lost-person lookouts with a Found button, 'I found someone who is lost')
@@ -51,3 +51,11 @@ Data:      incident details and contacts are encrypted in the database with crow
            keep a copy of the key apart from the backups. Archived personal data is erased after 30 days (retention: line).
            -Dcrowdwatch.backupCopy=PATH (or CROWDWATCH_BACKUP_COPY) copies the daily backups to a second disk or share;
            -Dcrowdwatch.autosave=SECONDS changes the 60-second autosave.
+Drill:     program/run-drill.bat (or ./run-drill.sh) airport 8081 ../examples/airport-fire.drill -> training server, nothing saved
+Service:   fill in program/service.conf; install-service-windows.bat (as administrator), sudo ./install-service-linux.sh or
+           sudo ./install-service-mac.sh -> starts with the computer; logs in crowdwatch-data/logs (30 days)
+Sites:     java -jar CrowdWatch.jar --site add NAME http://address:8080 CONTROL-KEY -> Sites view of a head office
+Directory: java -jar CrowdWatch.jar --user NAME ROLE directory, with CROWDWATCH_LDAP_URL and CROWDWATCH_LDAP_USER set
+Help page: http://<server>:8080/help for visitors (English/Arabic); Venue settings > Print help QR codes
+Phones:    notify: URL in the venue file sends urgent alerts nobody dealt with to an SMS/WhatsApp/e-mail gateway
+Venue:     size: (m2, for density), camera:, outdoor:, density:, notify: lines - see examples/template.venue

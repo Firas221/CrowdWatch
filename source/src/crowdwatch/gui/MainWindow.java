@@ -88,6 +88,8 @@ public class MainWindow extends JFrame {
     private crowdwatch.net.Accounts.Who me;
     // the venue's sensor connections (feed: lines)
     private crowdwatch.ds.LinkedList<crowdwatch.feed.CrowdFeed> feeds;
+    // sends urgent alerts nobody dealt with to the duty officer's phone (notify: line), or null
+    private crowdwatch.core.Notifier notifier;
     private final java.util.List<JComponent> officerOnly = new java.util.ArrayList<>(), adminOnly = new java.util.ArrayList<>();
     // checks officer check-ins and unit acknowledgements every 15 s
     private final Watchdog watchdog;
@@ -203,6 +205,8 @@ public class MainWindow extends JFrame {
                 if (api != null) api.stop();
                 api = new crowdwatch.net.ApiServer(m, key, scoutKey, crowdwatch.net.ApiServer.RATE_LIMIT);
                 api.setAccounts(accounts);
+                api.setDatabase(db);
+                api.setDataFolder(java.nio.file.Path.of("crowdwatch-data"));
                 int p = api.start(Integer.parseInt(port.trim()), https ? App.tls() : null);
                 show(Result.ok("Server running: other terminals open " + (https ? "https" : "http") + "://<this-computer>:" + p + "/  (API under /api/...)"
                     + (accounts != null && accounts.hasUsers() ? "  - personal logins on" : "")));
@@ -482,6 +486,9 @@ public class MainWindow extends JFrame {
     /** Connects the venue's radio gateway (its {@code gateway:} line), replacing the previous one. */
     private void useGateway(VenueProfile p) {
         crowdwatch.feed.Feeds.stopAll(feeds);
+        if (notifier != null) notifier.stop();
+        notifier = p != null && p.notifyUrl != null ? new crowdwatch.core.Notifier(m, p.notifyUrl, p.notifyMinutes) : null;
+        if (notifier != null) notifier.start();
         feeds = p == null ? null : crowdwatch.feed.Feeds.start(m, p.feeds, s -> SwingUtilities.invokeLater(() -> show(s.contains("not started") ? Result.fail(s) : Result.ok(s))));
         if (gateway != null) m.removeChannel(gateway);
         gateway = p != null && p.gateway != null ? new crowdwatch.net.HttpGatewayChannel(p.gateway) : null;

@@ -188,6 +188,81 @@ public class Accounts {
         return n;
     }
 
+    /** Password field of a user whose password is checked by the company directory (LDAP or Active Directory). */
+    public static final String LDAP = "LDAP";
+    /** Minutes a password reset code is valid. */
+    public static final int RESET_MINUTES = 30;
+    // user key -> { SHA-256 of the reset code, expiry }
+    private final AVLTree<String, Object[]> resets = new AVLTree<>();
+
+    /**
+     * Makes a user sign in with the company directory instead of a CrowdWatch password: the
+     * name and password are checked against LDAP or Active Directory ({@link Directory}); the
+     * role stays in CrowdWatch.
+     *
+     * @return null if done, otherwise why not
+     */
+    public synchronized String setDirectoryUser(String name, Role role) {
+        String done = setUser(name, role, "directory-placeholder-" + token());
+        if (done != null && !done.startsWith("saved in memory")) return done;
+        User u = user(name);
+        u.salt = "-";
+        u.hash = LDAP;
+        endSessions(u.name);
+        return saveQuietly();
+    }
+
+    /** @return true if the user signs in with the company directory */
+    public synchronized boolean isDirectoryUser(String name) { User u = user(name); return u != null && LDAP.equals(u.hash); }
+
+    /**
+     * A signed-in user changes their own password (the current one is checked first).
+     *
+     * @return null if done, otherwise why not
+     */
+    public synchronized String changePassword(String name, String current, String next, LocalDateTime now) {
+        User u = user(name);
+        if (u == null) return "no user " + name;
+        if (LDAP.equals(u.hash)) return "this user signs in with the company directory: change the password there";
+        if (current == null || !slowEquals(hash(current, u.salt), u.hash)) { fail(u, now, "wrong current password", "password"); return "the current password is wrong"; }
+        String done = setUser(u.name, u.role, next);
+        if (done == null) record(now, u.name, u.role.name(), "password", "password changed", true);
+        return done;
+    }
+
+    /**
+     * An administrator issues a one-time reset code for a user who forgot their password; it is
+     * valid for {@link #RESET_MINUTES} minutes and only its hash is kept.
+     *
+     * @return the code, or null if there is no such user (or it uses the company directory)
+     */
+    public synchronized String issueReset(String name, LocalDateTime now) {
+        User u = user(name);
+        if (u == null || LDAP.equals(u.hash)) return null;
+        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        StringBuilder code = new StringBuilder();
+        for (int k = 0; k < 10; k++) code.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        resets.insert(key(name), new Object[] { tokenKey(code.toString()), now.plusMinutes(RESET_MINUTES) });
+        return code.toString();
+    }
+
+    /**
+     * Sets a new password with a reset code. A wrong code counts as a wrong password (lock).
+     *
+     * @return null if done, otherwise why not
+     */
+    public synchronized String resetPassword(String name, String code, String next, LocalDateTime now) {
+        User u = user(name);
+        Object[] r = name == null ? null : resets.search(key(name));
+        if (u == null || r == null || code == null) { record(now, name == null ? "?" : name, "-", "password reset", "no reset code issued", false); return "no valid reset code for this user: ask an administrator"; }
+        if (u.lockedUntil != null && now.isBefore(u.lockedUntil)) return "locked after " + MAX_FAILURES + " wrong attempts: try again later";
+        if (now.isAfter((LocalDateTime) r[1])) { resets.delete(key(name)); return "the reset code has expired: ask an administrator for a new one"; }
+        if (!slowEquals(tokenKey(code.trim().toUpperCase(java.util.Locale.ROOT)), (String) r[0])) { fail(u, now, "wrong reset code", "password reset"); return "wrong reset code"; }
+        String done = setUser(u.name, u.role, next);
+        if (done == null) { resets.delete(key(name)); record(now, u.name, u.role.name(), "password reset", "new password set with a reset code", true); }
+        return done;
+    }
+
     /** Why a sign-in was refused, or the new session. */
     public static final class Login {
         /** The session token, or null if refused. */
@@ -239,7 +314,7 @@ public class Accounts {
         User u = user(name);
         if (u == null || !u.active || u.hash == null) { record(now, name == null ? "?" : name, "-", action, "unknown or switched-off user", false); return new Login(null, false); }
         if (u.lockedUntil != null && now.isBefore(u.lockedUntil)) { record(now, u.name, u.role.name(), action, "locked after " + MAX_FAILURES + " wrong passwords", false); return new Login(null, false); }
-        if (password == null || !slowEquals(hash(password, u.salt), u.hash)) {
+        if (password == null || !(LDAP.equals(u.hash) ? Directory.bind(u.name, password) : slowEquals(hash(password, u.salt), u.hash))) {
             fail(u, now, "wrong password", action);
             return new Login(null, false);
         }

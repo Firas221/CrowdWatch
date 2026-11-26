@@ -1644,6 +1644,240 @@ public class TestRunner {
             fv.feeds.size() + " feeds, retention " + fv.retentionDays + ", unknown feed " + badFeed + ", MATAF " + (shape == null ? 0 : shape.split(" ").length / 2) + " points, box " + bbox
                 + ", layout " + (layoutJson.contains("\"id\":\"MATAF\",\"shape\":[603,513") ? "has the shape" : "has no shape"));
 
+        System.out.println("PART O - DENSITY, REPORTS, REPLAY, MESSAGES, HEAT, ALERTS TO PHONES, DRILLS, SITES, PRIVACY, HELP PAGE, QR\n");
+        // 1. density
+        VenueProfile dv = VenueProfile.parse("venue: Density\ncode: density\nthresholds: 50 75 90\ndensity: 2 4 5\narea: HALL | Hall | S | HALL | 1000\narea: YARD | Yard | S | COURTYARD | 1000\nlink: HALL YARD 2\nsize: HALL 100\n");
+        CrowdMonitor dm = new CrowdMonitor(() -> time);
+        dm.loadVenue(dv, false);
+        String dl = "";
+        for (int n : new int[] { 150, 450, 390, 370, 520, 490 }) { dm.updateOccupancy("HALL", n, Source.SENSOR); dl += n + ":" + dm.findArea("HALL").level + " "; }
+        dm.updateOccupancy("YARD", 450, Source.SENSOR);
+        check("Density: with a floor area the level also follows people per m2 (MODERATE 2, HIGH 4, CRITICAL 5), even when the capacity percentage is low; it eases off with a 5% margin",
+            "150:LOW 450:HIGH 390:HIGH 370:MODERATE 520:CRITICAL 490:CRITICAL  - YARD without a size at 45%: LOW", dl + " - YARD without a size at 45%: " + dm.findArea("YARD").level);
+
+        // 2. minute frames and the report
+        CrowdMonitor rm2 = venue("airport");
+        rm2.officerCheckIn("Officer Sara");
+        for (int k = 0; k < 4; k++) { rm2.updateOccupancy("GATE-A", 800 + k * 200, Source.SENSOR); rm2.tick(); later(1); }
+        Result rpi = rm2.reportIncident("MEDICAL", "GATE-B", "Fainted", null, null);
+        int rpId = rm2.nextIncidentId() - 1;
+        later(2);
+        rm2.acknowledge(rm2.findIncident(rpId).unitId);
+        later(3);
+        rm2.confirmOnScene(rpId);
+        rm2.tick();
+        crowdwatch.ds.LinkedList<Object[]> times = new crowdwatch.ds.LinkedList<>();
+        for (Incident i : rm2.incidentTree().inOrder()) times.addLast(crowdwatch.core.Reports.times(i));
+        crowdwatch.core.Reports.Report repO;
+        synchronized (rm2) { repO = crowdwatch.core.Reports.build(rm2, time.toLocalDate(), time.toLocalDate(), rm2.records.frames(time.minusHours(1), time), times, rm2.alerts()); }
+        Object[] gate = null;
+        for (Object[] a : repO.areas) if ("GATE-A".equals(a[0])) gate = a;
+        String csvO = crowdwatch.core.Reports.csv(repO);
+        check("Reports: one frame a minute; the busiest area with its peak and hour, minutes to acknowledge and to arrive; CSV for Excel and a printable page",
+            "frames 5, GATE-A peak 1400 (88%) at 09:03, ack median 2.0, on scene median 5.0, CSV has 5 sections, printable page",
+            "frames " + repO.frames + ", GATE-A peak " + (gate == null ? "?" : gate[2] + " (" + gate[3] + "%) at " + gate[4].toString().substring(11, 16)) + ", ack median " + repO.ackMedian
+                + ", on scene median " + repO.sceneMedian + ", CSV has " + (csvO.split("\n\n").length - 1) + " sections, " + (crowdwatch.core.Reports.html(repO).contains("print()") ? "printable page" : "no page"));
+
+        // 3. the server: replay, report, messages with photos, scout phone extras, weather, metrics, venue file, help page, QR
+        java.nio.file.Path dataDir = java.nio.file.Path.of("build", "test-data-o");
+        deleteTree(dataDir.toFile());
+        java.nio.file.Files.createDirectories(dataDir);
+        CrowdMonitor sm = venue("airport");
+        sm.officerCheckIn("Officer Sara");
+        sm.tick(); later(1); sm.updateOccupancy("SEC-1", 380, Source.SENSOR); sm.tick();
+        crowdwatch.net.Accounts oacc = new crowdwatch.net.Accounts(null);
+        oacc.setUser("admin", crowdwatch.net.Accounts.Role.ADMIN, "Admin-pass-1");
+        oacc.setUser("omar", crowdwatch.net.Accounts.Role.OPERATOR, "Omar-pass-1");
+        crowdwatch.net.ApiServer oapi = new crowdwatch.net.ApiServer(sm, "ctl-o", null, 0);
+        oapi.setAccounts(oacc);
+        oapi.setDataFolder(dataDir);
+        int op = oapi.start(0);
+        String ob = "http://127.0.0.1:" + op;
+        java.net.http.HttpClient oc = java.net.http.HttpClient.newBuilder().proxy(java.net.http.HttpClient.Builder.NO_PROXY).build();
+        String tA = token(call(oc, ob + "/api/login", "user=admin&password=Admin-pass-1"));
+        String tO = token(call(oc, ob + "/api/login", "user=omar&password=Omar-pass-1"));
+        String replay = call(oc, ob + "/api/replay?from=" + time.minusMinutes(5).withSecond(0) + "&to=" + time.plusMinutes(1).withSecond(0), null, "Authorization", "Bearer " + tO);
+        String repJson = call(oc, ob + "/api/report", null, "Authorization", "Bearer " + tA);
+        String repOp = call(oc, ob + "/api/report", null, "Authorization", "Bearer " + tO);
+        java.net.http.HttpResponse<String> csvResp = oc.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(ob + "/api/report?format=csv")).header("Authorization", "Bearer " + tA).build(),
+            java.net.http.HttpResponse.BodyHandlers.ofString());
+        check("Server: replay of the recorded minutes with their levels; reports for officers (JSON, CSV download); operators cannot read reports",
+            "replay 200 with SEC-1 at 380 HIGH, report 200, CSV attachment, operator 403",
+            "replay " + code(replay) + (replay.contains("\"SEC-1\":[380,\"HIGH\"]") ? " with SEC-1 at 380 HIGH" : " without the frame") + ", report " + code(repJson)
+                + ", CSV " + (csvResp.headers().firstValue("Content-Disposition").orElse("").contains(".csv") ? "attachment" : "inline") + ", operator " + code(repOp));
+
+        String devA03 = oacc.issueDevice("A03"), devA02 = oacc.issueDevice("A02");
+        String png = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(new byte[] { (byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 13 });
+        String mFrom = call(oc, ob + "/api/message", "unit=B99&text=Child+found+near+gate&photo=" + java.net.URLEncoder.encode(png, "UTF-8"), "X-Api-Key", devA03);
+        String mList = call(oc, ob + "/api/messages?unit=A03", null, "Authorization", "Bearer " + tO);
+        int mid = Integer.parseInt(mList.replaceAll("(?s).*\"id\":(\\d+).*", "$1"));
+        java.net.http.HttpResponse<byte[]> ph = oc.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(ob + "/api/photo?id=" + mid)).header("Authorization", "Bearer " + tO).build(), java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+        String phOther = call(oc, ob + "/api/photo?id=" + mid, null, "X-Api-Key", devA02);
+        String mTo = call(oc, ob + "/api/message", "unit=A03&text=Bring+the+child+to+ARRIVALS-1", "Authorization", "Bearer " + tO);
+        String inboxO = sm.findUnit("A03").inbox.last() == null ? "" : sm.findUnit("A03").inbox.last().text;
+        check("Messages: a scout phone sends text and a photo to the control room (stored as its own unit, whatever unit it names); the control room answers; another unit's phone cannot see the photo",
+            "200, listed from A03 with photo, photo 200 image/png, other phone 403, reply 200, A03 got FROM CONTROL (Operator omar)",
+            code(mFrom) + ", " + (mList.contains("\"unit\":\"A03\"") && mList.contains("\"photo\":true") ? "listed from A03 with photo" : mList) + ", photo " + ph.statusCode() + " " + ph.headers().firstValue("Content-Type").orElse("")
+                + ", other phone " + code(phOther) + ", reply " + code(mTo) + ", A03 got " + (inboxO.startsWith("FROM CONTROL (omar)") ? "FROM CONTROL (Operator omar)" : inboxO));
+
+        String pos = call(oc, ob + "/api/position", "area=GATE-C", "X-Api-Key", devA02);
+        String posR = call(oc, ob + "/api/position", "area=OPS", "X-Api-Key", devA02);
+        sm.reportIncident("SECURITY", "GATE-C", "Unattended bag", null, null);
+        String dutyBusy = sm.activeIncident("A02") != null ? code(call(oc, ob + "/api/duty", "on=0", "X-Api-Key", devA02)) : "no task";
+        call(oc, ob + "/api/unit?id=A02&battery=12", null, "X-Api-Key", devA02);
+        int batAlerts = 0;
+        for (Alert alO : sm.alerts()) if (alO.kind == crowdwatch.model.Enums.AlertKind.BATTERY) batAlerts++;
+        check("Scout phone extras: 'I am here' moves the unit (not into staff-only areas); going off duty with a task is refused; a low battery raises one alert",
+            "200 at GATE-C, staff-only 422, off duty with a task 422, battery 12% and 1 alert",
+            code(pos) + " at " + sm.findUnit("A02").area.id + ", staff-only " + code(posR) + ", off duty with a task " + dutyBusy + ", battery " + sm.findUnit("A02").battery + "% and " + batAlerts + " alert");
+
+        String wx = call(oc, ob + "/api/weather", "temp=38&humidity=50", "Authorization", "Bearer " + tO);
+        String ovw = call(oc, ob + "/api/overview", null, "Authorization", "Bearer " + tO);
+        String heatAlert = "";
+        for (Alert alO : sm.alerts()) if (alO.kind == crowdwatch.model.Enums.AlertKind.HEAT) { heatAlert = alO.text; break; }
+        check("Heat stress: the heat index from temperature and humidity (US NWS formula), its band, an alert naming the outdoor areas and what to do",
+            "38C 50% -> heat index 49 (DANGER), alert names CURB-1, CURB-2 and water and shade, overview shows it",
+            "38C 50% -> heat index " + Math.round(crowdwatch.core.Records.heatIndex(38, 50)) + " (" + crowdwatch.core.Records.heatBand(crowdwatch.core.Records.heatIndex(38, 50)) + "), alert names "
+                + (heatAlert.contains("CURB-1, CURB-2") && heatAlert.contains("water and shade") ? "CURB-1, CURB-2 and water and shade" : heatAlert) + ", overview " + (ovw.contains("\"band\":\"DANGER\"") ? "shows it" : "misses it") + (code(wx).equals("200") ? "" : " (weather " + code(wx) + ")"));
+
+        String mNo = call(oc, ob + "/metrics", null);
+        String mYes = call(oc, ob + "/metrics", null, "X-Api-Key", "ctl-o");
+        String vf = call(oc, ob + "/api/venuefile", null, "Authorization", "Bearer " + tA);
+        String vfOp = call(oc, ob + "/api/venuefile", null, "Authorization", "Bearer " + tO);
+        String vText = vf.substring(4) + "\npos: TRAIN 650 830 330 120\n";
+        String vSave = call(oc, ob + "/api/venuefile", "text=" + java.net.URLEncoder.encode(vText, "UTF-8"), "Authorization", "Bearer " + tA);
+        String vBad = call(oc, ob + "/api/venuefile", "text=" + java.net.URLEncoder.encode("venue: X\ncode: x\npos: NOWHERE 1 2 3 4\n", "UTF-8"), "Authorization", "Bearer " + tA);
+        long savedFiles;
+        try (java.util.stream.Stream<java.nio.file.Path> stO = java.nio.file.Files.list(dataDir.resolve("venues"))) { savedFiles = stO.count(); }
+        check("Monitoring and the venue editor: /metrics in Prometheus format only with the control key; the venue file for administrators; an edited file is checked before it is saved",
+            "metrics 401 without key, 200 with people on site, venue file 200 (operator 403), saved 200 (1 file), a wrong file 422",
+            "metrics " + code(mNo) + " without key, " + code(mYes) + (mYes.contains("crowdwatch_people_on_site") ? " with people on site" : "") + ", venue file " + code(vf) + " (operator " + code(vfOp) + "), saved "
+                + code(vSave) + " (" + savedFiles + " file), a wrong file " + code(vBad));
+
+        String help = call(oc, ob + "/help?area=GATE-B", null);
+        int helpBefore = sm.incidentTree().size();
+        String pub1 = call(oc, ob + "/api/public/report", "kind=lost&area=GATE-B&details=My+son+Adam+blue+shirt&contact=0500000000&language=English");
+        String pub2 = call(oc, ob + "/api/public/report", "kind=medical&area=GATE-B&details=Woman+fainted");
+        String pub3 = call(oc, ob + "/api/public/report", "kind=help&area=GATE-B&details=Wheelchair+please");
+        String pub4 = call(oc, ob + "/api/public/report", "kind=help&area=GATE-B&details=again");
+        String pubStaff = call(oc, ob + "/api/public/report", "kind=help&area=OPS&details=x");
+        String visitor = "";
+        for (Incident i : sm.incidentTree().inOrder()) if (i.details != null && i.details.startsWith("[visitor report] My son")) visitor = i.category.code;
+        String qr = call(oc, ob + "/api/qr", null, "Authorization", "Bearer " + tO);
+        check("Visitor help page: public, GATE-B already chosen from the QR code; reports become incidents marked as visitor reports; 3 reports per phone in 10 minutes; QR codes to print",
+            "help 200 with GATE-B selected, 3 accepted (LOST_PERSON), 4th 429, 3 incidents more, QR page with codes",
+            "help " + code(help) + (help.contains("value='GATE-B' selected") ? " with GATE-B selected" : "") + ", " + ((code(pub1) + code(pub2) + code(pub3)).equals("200200200") ? "3 accepted (" + visitor + ")" : pub1 + pub2 + pub3)
+                + ", 4th " + code(pub4) + (code(pubStaff).equals("429") ? "" : " (staff-only area " + code(pubStaff) + ")") + ", " + (sm.incidentTree().size() - helpBefore) + " incidents more, QR page " + (qr.contains("<svg") ? "with codes" : "without codes"));
+
+        // 4. data-protection request
+        String pvO = call(oc, ob + "/api/privacy?find=0500000000", null, "Authorization", "Bearer " + tA);
+        int pvId = Integer.parseInt(pvO.replaceAll("(?s).*?\"id\":(\\d+).*", "$1"));
+        String pvOp = call(oc, ob + "/api/privacy?find=0500000000", null, "Authorization", "Bearer " + tO);
+        String pvErase = call(oc, ob + "/api/privacy/erase", "ids=" + pvId, "Authorization", "Bearer " + tA);
+        String pvAgain = call(oc, ob + "/api/privacy?find=0500000000", null, "Authorization", "Bearer " + tA);
+        check("Data-protection request: an administrator finds a person's data by phone number, exports it, and erases it; the rest of the record stays",
+            "found I" + pvId + ", operator 403, erased 200, search again finds nothing, category kept LOST_PERSON",
+            (pvO.contains("\"contact\":\"0500000000\"") ? "found I" + pvId : "not found") + ", operator " + code(pvOp) + ", erased " + code(pvErase) + ", search again "
+                + (pvAgain.contains("\"incidents\":[]") ? "finds nothing" : "still finds it") + ", category kept " + sm.findIncident(pvId).category.code);
+        oapi.stop();
+
+        // 5. alerts to the officer's phone when nobody deals with them
+        com.sun.net.httpserver.HttpServer gwO = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        crowdwatch.ds.LinkedList<String> gotO = new crowdwatch.ds.LinkedList<>();
+        gwO.createContext("/notify", ex -> { gotO.addLast(new String(ex.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)); ex.sendResponseHeaders(204, -1); ex.close(); });
+        gwO.start();
+        CrowdMonitor nm = venue("airport");
+        nm.officerCheckIn("Officer Sara");
+        crowdwatch.core.Notifier nf = new crowdwatch.core.Notifier(nm, "http://127.0.0.1:" + gwO.getAddress().getPort() + "/notify", 3);
+        nm.addListener(nf);
+        nm.sos("GATE-B", null, "person collapsed");
+        nm.awaitListeners(2000);
+        later(1);
+        int n1 = nf.check(time);
+        later(3);
+        int n2 = nf.check(time);
+        nm.alarm("BAGGAGE-1", "smoke");
+        nm.awaitListeners(2000);
+        later(1);
+        nm.officerCheckIn("Officer Sara");
+        later(4);
+        int n3 = nf.check(time);
+        gwO.stop(0);
+        check("Alerts nobody dealt with go to the duty officer's phone (SMS, WhatsApp or e-mail gateway) after the set minutes; an alert dealt with at a console is not sent",
+            "after 1 min: 0, after 4 min: 1 sent with kind SOS, alarm dealt with by a check-in: 0 sent",
+            "after 1 min: " + n1 + ", after 4 min: " + n2 + " sent" + (gotO.size() > 0 && gotO.getFirst().contains("\"kind\":\"SOS\"") ? " with kind SOS" : "") + ", alarm dealt with by a check-in: " + n3 + " sent");
+
+        // 6. drills
+        crowdwatch.feed.DrillScript drill = crowdwatch.feed.DrillScript.read(java.nio.file.Path.of(examplesDir(), "airport-fire.drill"));
+        CrowdMonitor drm = venue("airport");
+        String dr1 = drill.run(drm, "count CHECKIN-1 1150"), dr2 = drill.run(drm, "lost GATE-A Boy, 7, red jacket"), dr3 = drill.run(drm, "alarm BAGGAGE-1 smoke");
+        String badDrill;
+        try { crowdwatch.feed.DrillScript.parse("x", "00:10 explode GATE-A"); badDrill = "accepted"; } catch (IllegalArgumentException e) { badDrill = "refused"; }
+        crowdwatch.net.ApiServer dapi = new crowdwatch.net.ApiServer(drm, null, null, 0);
+        dapi.setDrill(true);
+        int dp = dapi.start(0);
+        String dov = call(oc, "http://127.0.0.1:" + dp + "/api/overview", null);
+        dapi.stop();
+        check("Drills: a timed script of events played into a training server (nothing saved); every screen shows DRILL; an unknown command is refused",
+            "12 events, count applied, lost person recorded, alarm raised, overview drill true, bad line refused",
+            drill.size() + " events, count " + dr1 + ", lost person " + (dr2.contains("recorded") ? "recorded" : dr2) + ", alarm " + (dr3.contains("BAGGAGE-1") && dr3.contains("proposed") ? "raised" : dr3)
+                + ", overview drill " + dov.contains("\"drill\":true") + ", bad line " + badDrill);
+
+        // 7. head office sites
+        CrowdMonitor siteM = venue("stadium");
+        crowdwatch.net.ApiServer siteApi = new crowdwatch.net.ApiServer(siteM, "site-key", null, 0);
+        int sitePort = siteApi.start(0);
+        java.nio.file.Files.writeString(dataDir.resolve("sites.txt"), "# name | address | key\nStadium | http://127.0.0.1:" + sitePort + " | site-key\nMall | http://127.0.0.1:1 | x\n");
+        CrowdMonitor hq = venue("airport");
+        crowdwatch.net.ApiServer hqApi = new crowdwatch.net.ApiServer(hq, "hq-key", null, 0);
+        hqApi.setDataFolder(dataDir);
+        int hqPort = hqApi.start(0);
+        String sites = call(oc, "http://127.0.0.1:" + hqPort + "/api/sites", null, "X-Api-Key", "hq-key");
+        String hqOv = call(oc, "http://127.0.0.1:" + hqPort + "/api/overview", null, "X-Api-Key", "hq-key");
+        hqApi.stop(); siteApi.stop();
+        check("Several venues: a head office lists its sites (sites.txt) and sees each one's situation; a site that does not answer is shown as such",
+            "Stadium answers (Sample National Stadium), Mall not answering, overview says sites true",
+            (sites.contains("\"name\":\"Stadium\",\"url\"") && sites.contains("Sample National Stadium") ? "Stadium answers (Sample National Stadium)" : sites) + ", "
+                + (sites.contains("\"name\":\"Mall\"") && sites.contains("not answering") ? "Mall not answering" : "Mall ?") + ", overview says sites " + hqOv.contains("\"sites\":true"));
+
+        // 8. company directory and password reset
+        crowdwatch.net.Accounts pacc = new crowdwatch.net.Accounts(null);
+        pacc.setUser("admin", crowdwatch.net.Accounts.Role.ADMIN, "Admin-pass-1");
+        String dirSet = pacc.setDirectoryUser("khalid", crowdwatch.net.Accounts.Role.OFFICER);
+        String dirLogin = pacc.login("khalid", "anything", LocalDateTime.of(2026, 12, 1, 9, 0));
+        pacc.setUser("nadia", crowdwatch.net.Accounts.Role.OPERATOR, "Nadia-pass-1");
+        LocalDateTime ptO = LocalDateTime.of(2026, 12, 1, 9, 0);
+        String rcode = pacc.issueReset("nadia", ptO);
+        String wrongR = pacc.resetPassword("nadia", "WRONGCODE1", "New-pass-123", ptO);
+        String rightR = pacc.resetPassword("nadia", rcode, "New-pass-123", ptO.plusMinutes(5));
+        String reuse = pacc.resetPassword("nadia", rcode, "Other-pass-123", ptO.plusMinutes(6));
+        String newLogin = pacc.login("nadia", "New-pass-123", ptO.plusMinutes(7));
+        String chWrong = pacc.changePassword("nadia", "nope", "Third-pass-123", ptO.plusMinutes(8));
+        check("Company directory and passwords: a directory user is checked by LDAP (refused when no directory answers); a reset code works once within 30 minutes; changing a password needs the current one",
+            "directory user saved, refused without a directory, wrong code refused, reset done, code used up, new password works, wrong current password refused",
+            (dirSet == null && pacc.isDirectoryUser("khalid") ? "directory user saved" : "not saved: " + dirSet) + ", " + (dirLogin == null ? "refused without a directory" : "SIGNED IN")
+                + ", " + (wrongR != null ? "wrong code refused" : "wrong code accepted") + ", " + (rightR == null ? "reset done" : rightR) + ", " + (reuse != null ? "code used up" : "code reusable")
+                + ", " + (newLogin != null ? "new password works" : "new password refused") + ", " + (chWrong != null ? "wrong current password refused" : "changed"));
+
+        // 9. QR codes read backO independently
+        String q1 = "http://192.168.1.10:8080/help?area=GATE-A";
+        StringBuilder qrOut = new StringBuilder();
+        for (String text : new String[] { "HELLO", q1, "https://crowdwatch.example.org:8443/help?area=" + "X".repeat(60), "Z".repeat(200) }) {
+            crowdwatch.net.QrCode qc = crowdwatch.net.QrCode.encode(text);
+            String backO = QrCheck.decode(qc);
+            qrOut.append("v").append(qc.version).append(text.equals(backO) ? " ok" : " " + backO).append(", ");
+        }
+        String fm0 = QrCheck.formatM0(crowdwatch.net.QrCode.encode("HELLO", 0));
+        check("QR codes: read back by an independent reader (format check, mask, Reed-Solomon check of every block, the text) for versions 1 to 10; the format bits match the standard's table",
+            "v1 ok, v3 ok, v6 ok, v10 ok, format M mask 0 = 101010000010010", qrOut + "format M mask 0 = " + fm0);
+
+        // 10. camera links, outdoor areas, the weather count line
+        CrowdMonitor cm = venue("airport");
+        String wl = crowdwatch.feed.LineFormat.apply(cm, "weather,30,40", Source.SENSOR);
+        check("Camera links and the weather count line: the area window can open its camera view; a weather station sends weather,TEMP,HUMIDITY",
+            "SEC-1 camera http://cctv.local/view?camera=sec1, weather line applied, outdoor CURB-1 CURB-2",
+            "SEC-1 camera " + cm.venue().cameraOf("SEC-1") + ", weather line " + (wl == null ? "applied" : wl) + ", outdoor " + String.join(" ", cm.outdoorAreas()));
+
         if (Database.driverAvailable()) Database.shutdown();
 
         System.out.println("=====================================");
@@ -1674,6 +1908,11 @@ public class TestRunner {
     private static String token(String reply) {
         java.util.regex.Matcher mt = java.util.regex.Pattern.compile("\"token\":\"([^\"]+)\"").matcher(reply);
         return mt.find() ? mt.group(1) : null;
+    }
+
+    /** @return the examples folder (next to program/ in the package, or ./examples) */
+    private static String examplesDir() {
+        return java.nio.file.Files.exists(java.nio.file.Path.of("../examples/airport-fire.drill")) ? "../examples" : "examples";
     }
 
     /** Deletes a folder and everything in it (removes the previous test database). */

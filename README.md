@@ -16,7 +16,9 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 | Server and web console | `program/run-server.bat` or `program/run-server.sh`, then open `http://<this-pc>:8080/` and sign in |
 | HTTPS | add `--https`, or set `CROWDWATCH_HTTPS=1` before `run-server` |
 | Scout phones | `http://<server>:8080/scout` with the unit's device code |
-| Tests (126 cases) | `program/run-tests.bat` or `program/run-tests.sh` |
+| Drill (training) | `program/run-drill.bat` or `./run-drill.sh airport 8081 ../examples/airport-fire.drill` |
+| Run as a service | fill in `program/service.conf`, then `install-service-windows.bat` (as administrator) or `sudo ./install-service-linux.sh` / `install-service-mac.sh` |
+| Tests (141 cases) | `program/run-tests.bat` or `program/run-tests.sh` |
 | Build from source | `build.bat` or `./build.sh` (JDK 17+): makes `program/CrowdWatch.jar` and runs the tests |
 
 ## What is in it
@@ -26,6 +28,12 @@ CrowdWatch generalises the Umra Tech crowd-management project. It keeps live peo
 - Security: personal logins with three roles in the web console, the plain dashboard and both desktop windows; optional two-step sign-in with an authenticator app; PBKDF2 password hashes, lock after wrong passwords, sign-ins kept over a restart; a device code per scout phone that works only for its unit; officer approval for restricted areas; an audit log of every change (database and daily file); built-in HTTPS; control and scout keys for other systems.
 - Personal data: incident details and contacts encrypted in the database (AES-256-GCM), erased from archived incidents after 30 days; daily backups optionally copied to a second folder.
 - Sensors: `feed:` lines connect counting systems by folder, web address (text or JSON) or TCP socket, besides the JSON API.
+- Crowd density: with an area's floor area the level also follows people per square metre (dangerous from 4 per m²).
+- Reports (Excel/CSV and PDF), replay of any period minute by minute, drills on a training server, a venue editor on the drawing, several venues in one head-office view.
+- Messages and photos between scout phones and the control room; the phone reports its position, duty and battery.
+- Urgent alerts nobody dealt with go to the duty officer's phone (SMS, WhatsApp or e-mail gateway); heat-stress alerts; camera views per area.
+- A public help page with printable QR codes, in English and Arabic, for visitors to report a lost person or ask for help.
+- Company directory (LDAP / Active Directory) sign-in, password reset codes, data-protection requests (find, export, erase), Prometheus metrics, daily log files, service installers.
 - Arabic: the web console and the scout page switch to Arabic, right to left.
 - Automation: automatic dispatch, officer supervision, task acknowledgement, SOS, evacuation proposals and plans, reinforcement of crowded areas, sensor checks, lost persons, shifts and handover reports, public messages that need officer approval, and a count check against the gates.
 - Venue layouts: a drawing, area positions or outlines, exit flows, corridor capacities, lifts and fire zones. All sample venues include one; the Umrah layout is a schematic of the real mosques with estimated figures, not official data.

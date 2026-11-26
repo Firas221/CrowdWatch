@@ -38,6 +38,18 @@ area: GATE-C | Gates C1-C10 | Airside T2 | GATE | 1800
 area: APRON | Apron and Stand Area | Airside | RESTRICTED | 150 | restricted
 area: OPS | Operations Control Room | Landside | RESTRICTED | 40 | restricted
 
+# floor areas in square metres (estimates for this sample): with them the level also follows people per m2
+size: CHECKIN-1 650
+size: SEC-1 200
+size: PASS-1 170
+size: GATE-A 750
+size: GATE-B 560
+size: CURB-1 420
+size: TRAIN 700
+# camera views opened from the console's area window (addresses of the venue's video system)
+camera: SEC-1 http://cctv.local/view?camera=sec1
+camera: GATE-A http://cctv.local/view?camera=gate-a
+
 link: CURB-1 CHECKIN-1 2
 link: CHECKIN-1 SEC-1 3 300
 link: SEC-1 PASS-1 2 250

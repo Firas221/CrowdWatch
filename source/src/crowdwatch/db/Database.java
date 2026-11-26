@@ -18,7 +18,9 @@ import crowdwatch.model.Enums.*;
  */
 public class Database {
     // deletion order: child tables before the tables they reference
-    private static final String[] TABLES = { "history", "alerts", "incidents", "unit_skills", "units", "area_state", "venue", "counters", "state" };
+    private static final String[] TABLES = { "history", "alerts", "incidents", "unit_skills", "units", "area_state", "venue", "counters", "state", "messages" };
+    /** Days the minute-by-minute counts (frames) are kept for replay and reports. */
+    public static final int FRAME_DAYS = 90;
     // JDBC URL of the database folder
     private final String url;
     // last part of the folder path; must match the venue code being saved
@@ -152,7 +154,11 @@ public class Database {
             "CREATE TABLE audit (happened_at TIMESTAMP, username VARCHAR(40), role VARCHAR(12), action VARCHAR(40), summary VARCHAR(400), ok INT)",
             // personal fields are stored encrypted (longer than the text itself)
             "ALTER TABLE incidents ALTER COLUMN details SET DATA TYPE VARCHAR(1200)", "ALTER TABLE incidents ALTER COLUMN contact SET DATA TYPE VARCHAR(400)",
-            "ALTER TABLE incident_archive ALTER COLUMN details SET DATA TYPE VARCHAR(1200)", "ALTER TABLE incident_archive ALTER COLUMN contact SET DATA TYPE VARCHAR(400)" };
+            "ALTER TABLE incident_archive ALTER COLUMN details SET DATA TYPE VARCHAR(1200)", "ALTER TABLE incident_archive ALTER COLUMN contact SET DATA TYPE VARCHAR(400)",
+            // every area's count once a minute (replay and reports), and the messages between units and the control room
+            "CREATE TABLE frames (at_minute TIMESTAMP, area VARCHAR(40), occupancy INT, level VARCHAR(10))",
+            "CREATE INDEX frames_minute ON frames(at_minute)",
+            "CREATE TABLE messages (id INT, sent TIMESTAMP, unit VARCHAR(20), from_unit INT, by_name VARCHAR(40), incident INT, text VARCHAR(1400), photo VARCHAR(80))" };
         try (Statement s = c.createStatement()) {
             for (String sql : steps) {
                 try { s.executeUpdate(sql); }
@@ -181,6 +187,7 @@ public class Database {
         try { write(s); }
         catch (SQLException | RuntimeException e) {
             m.returnArchive(s.archived);   // not written: keep them for the next save
+            synchronized (m) { m.records.returnUnsaved(s.frames); }
             throw e;
         }
         m.noteSaved(m.now(), backupIfDue());
@@ -225,6 +232,94 @@ public class Database {
             }
         }
         return out.toArray(new String[0]);
+    }
+
+    /**
+     * Reads the minute frames between two times (for replay and reports), oldest first.
+     */
+    public LinkedList<crowdwatch.core.Records.Frame> frames(LocalDateTime from, LocalDateTime to) throws SQLException {
+        LinkedList<crowdwatch.core.Records.Frame> out = new LinkedList<>();
+        try (Connection c = open()) {
+            schema(c);
+            try (PreparedStatement ps = c.prepareStatement("SELECT at_minute, area, occupancy, level FROM frames WHERE at_minute >= ? AND at_minute <= ? ORDER BY at_minute, area")) {
+                ps.setTimestamp(1, Timestamp.valueOf(from));
+                ps.setTimestamp(2, Timestamp.valueOf(to));
+                try (ResultSet rs = ps.executeQuery()) {
+                    LocalDateTime cur = null;
+                    LinkedList<Object[]> rows = new LinkedList<>();
+                    while (true) {
+                        boolean more = rs.next();
+                        LocalDateTime t = more ? rs.getTimestamp(1).toLocalDateTime() : null;
+                        if (cur != null && (!more || !t.equals(cur))) {
+                            String[] ids = new String[rows.size()], lv = new String[rows.size()];
+                            int[] occ = new int[rows.size()];
+                            int k = 0;
+                            for (Object[] r : rows) { ids[k] = (String) r[0]; occ[k] = (Integer) r[1]; lv[k] = (String) r[2]; k++; }
+                            out.addLast(crowdwatch.core.Records.frame(cur, ids, occ, lv));
+                            rows.clear();
+                        }
+                        if (!more) break;
+                        cur = t;
+                        rows.addLast(new Object[] { rs.getString(2), rs.getInt(3), rs.getString(4) });
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Reads the times of the archived incidents reported between two times (the monitor holds the rest), for the
+     * response-time report: { id, category, area, reported, acknowledged, on scene, resolved, automatic }.
+     */
+    public LinkedList<Object[]> incidentTimes(LocalDateTime from, LocalDateTime to) throws SQLException {
+        LinkedList<Object[]> out = new LinkedList<>();
+        try (Connection c = open()) {
+            schema(c);
+            for (String table : new String[] { "incident_archive" }) {
+                try (PreparedStatement ps = c.prepareStatement("SELECT id, category, area, reported, acknowledged, on_scene, resolved, automatic FROM " + table + " WHERE reported >= ? AND reported <= ?")) {
+                    ps.setTimestamp(1, Timestamp.valueOf(from));
+                    ps.setTimestamp(2, Timestamp.valueOf(to));
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) out.addLast(new Object[] { rs.getInt(1), rs.getString(2), rs.getString(3), dt(rs.getTimestamp(4)), dt(rs.getTimestamp(5)),
+                            dt(rs.getTimestamp(6)), dt(rs.getTimestamp(7)), rs.getInt(8) == 1 });
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Finds archived incidents whose details or contact contain a text (decrypted first), for a
+     * request under data-protection law: { id, category, area, reported, details, contact }.
+     */
+    public LinkedList<Object[]> searchArchive(String text) throws SQLException {
+        LinkedList<Object[]> out = new LinkedList<>();
+        String needle = text.toLowerCase(java.util.Locale.ROOT);
+        try (Connection c = open()) {
+            schema(c);
+            try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("SELECT id, category, area, reported, details, contact FROM incident_archive")) {
+                while (rs.next()) {
+                    String d = cipher().decrypt(rs.getString(5)), ct = cipher().decrypt(rs.getString(6));
+                    if ((d != null && d.toLowerCase(java.util.Locale.ROOT).contains(needle)) || (ct != null && ct.toLowerCase(java.util.Locale.ROOT).contains(needle)))
+                        out.addLast(new Object[] { rs.getInt(1), rs.getString(2), rs.getString(3), dt(rs.getTimestamp(4)), d, ct });
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Erases the details and contact of an archived incident. @return true if a row was changed */
+    public boolean eraseArchived(int id) throws SQLException {
+        try (Connection c = open()) {
+            schema(c);
+            try (PreparedStatement ps = c.prepareStatement("UPDATE incident_archive SET details = ?, contact = NULL WHERE id = ?")) {
+                ps.setString(1, "(erased on request)");
+                ps.setInt(2, id);
+                return ps.executeUpdate() > 0;
+            }
+        }
     }
 
     /** Daily backups are kept for this many days. */
@@ -318,6 +413,7 @@ public class Database {
             throw new IllegalStateException("Venue '" + s.code + "' does not belong to database '" + folderName + "'; not saved.");
         encryptRows(s.incidents);
         encryptRows(s.archiveRows);
+        for (Object[] r : s.messages) r[6] = cipher().encrypt((String) r[6]);   // messages may name people
         try (Connection c = open()) {
             schema(c);
             c.setAutoCommit(false);
@@ -334,6 +430,15 @@ public class Database {
                 insert(c, "INSERT INTO state VALUES (?,?,?)", s.state);
                 insert(c, "INSERT INTO incident_archive VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", s.archiveRows);
                 insert(c, "INSERT INTO history_archive VALUES (?,?,?,?,?)", s.archiveHistory);
+                insert(c, "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?)", s.messages);
+                LinkedList<Object[]> frameRows = new LinkedList<>();
+                for (crowdwatch.core.Records.Frame f : s.frames)
+                    for (int k = 0; k < f.ids.length; k++) frameRows.addLast(new Object[] { ts(f.minute), f.ids[k], f.occupancy[k], f.level[k] });
+                insert(c, "INSERT INTO frames VALUES (?,?,?,?)", frameRows);
+                try (PreparedStatement ps = c.prepareStatement("DELETE FROM frames WHERE at_minute < ?")) {
+                    ps.setTimestamp(1, Timestamp.valueOf(s.now.minusDays(FRAME_DAYS)));
+                    ps.executeUpdate();
+                }
                 if (s.retentionDays > 0) try (PreparedStatement ps = c.prepareStatement(
                         "UPDATE incident_archive SET details = NULL, contact = NULL WHERE resolved < ? AND (details IS NOT NULL OR contact IS NOT NULL)")) {
                     ps.setTimestamp(1, Timestamp.valueOf(s.now.minusDays(s.retentionDays)));
@@ -360,6 +465,9 @@ public class Database {
             archiveRows = new LinkedList<>(), archiveHistory = new LinkedList<>();
         // incidents taken from the monitor's archive queue by this snapshot
         final LinkedList<Incident> archived;
+        // minute frames not saved yet, and the messages
+        final LinkedList<crowdwatch.core.Records.Frame> frames;
+        final LinkedList<Object[]> messages = new LinkedList<>();
         // personal data of archived incidents older than this many days is erased (0 = keep)
         final int retentionDays;
         final LocalDateTime now;
@@ -380,6 +488,9 @@ public class Database {
                 for (String sk : u.skills) skills.addLast(new Object[] { fit(u.id, 20), k++, fit(sk, 40) });
                 addHistory("U", u.id, u.history);
             }
+            frames = m.records.takeUnsaved();
+            for (crowdwatch.core.Records.Message x : m.records.allMessages())
+                messages.addLast(new Object[] { x.id, ts(x.time), fit(x.unit, 20), x.fromUnit ? 1 : 0, fit(x.by, 40), x.incident, fit(x.text, 500), fit(x.photo, 80) });
             archived = m.takeArchive();
             for (Incident i : archived) {
                 archiveRows.addLast(incidentRow(m, i));
@@ -534,6 +645,10 @@ public class Database {
                 }
                 try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery("SELECT value FROM counters WHERE name = 'incident'")) {
                     if (rs.next()) m.setNextIncidentId(rs.getInt(1));
+                }
+                try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery("SELECT * FROM messages ORDER BY id")) {
+                    while (rs.next()) m.records.restoreMessage(new crowdwatch.core.Records.Message(rs.getInt("id"), dt(rs.getTimestamp("sent")), rs.getString("unit"),
+                        rs.getInt("from_unit") == 1, rs.getString("by_name"), rs.getInt("incident"), cipher().decrypt(rs.getString("text")), rs.getString("photo")));
                 }
                 try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery("SELECT value FROM counters WHERE name = 'archived'")) {
                     if (rs.next()) m.setArchivedCount(rs.getInt(1));

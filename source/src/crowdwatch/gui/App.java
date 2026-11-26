@@ -65,14 +65,20 @@ public class App {
      */
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && args[0].equals("--user")) { user(args); return; }
-        if (args.length > 0 && args[0].equals("--server")) {
-            boolean https = false;
+        if (args.length > 0 && args[0].equals("--site")) { site(args); return; }
+        if (args.length > 0 && (args[0].equals("--server") || args[0].equals("--drill"))) {
+            boolean https = false, drill = args[0].equals("--drill");
             int n = 0;
             for (String a : args) if (a.equals("--https")) https = true; else n++;
             String[] rest = new String[n];
             n = 0;
             for (String a : args) if (!a.equals("--https")) rest[n++] = a;
-            headless(rest, https);
+            if (drill) {
+                // --drill <venue> [port] [file.drill]: a training server with the venue's sample data, never saved
+                String script = rest.length > 3 ? rest[3] : null;
+                String[] srv = { "--server", rest.length > 1 ? rest[1] : "airport", rest.length > 2 ? rest[2] : "8081" };
+                headless(srv, https, true, script);
+            } else headless(rest, https, false, null);
             return;
         }
         SwingUtilities.invokeLater(() -> {
@@ -109,12 +115,15 @@ public class App {
      * are printed as "RADIO &gt;&gt; unit: text" for a radio operator ({@link ConsoleRelay}); every
      * message also goes to the venue's radio gateway if one is configured. The {@link Watchdog} runs the officer and acknowledgement checks.
      */
-    private static void headless(String[] args, boolean https) throws Exception {
+    private static void headless(String[] args, boolean https, boolean drill, String drillScript) throws Exception {
         if (args.length < 2) { System.out.println("Usage: java -jar CrowdWatch.jar --server <airport|stadium|umrah|file.venue> [port] [control-key] [scout-key] [--https]"); return; }
         VenueProfile p = pick(args[1]);
         int port = args.length > 2 ? Integer.parseInt(args[2]) : 8080;
         CrowdMonitor m = new CrowdMonitor(Clock.SYSTEM);
-        Database db = openDatabase(p.code);
+        // console output also goes to daily log files (30 days kept)
+        LogFiles.tee(Path.of("crowdwatch-data", "logs"), Database.safeName(p.code) + (drill ? "-drill" : ""));
+        Database db = drill ? null : openDatabase(p.code);
+        if (drill) System.out.println("DRILL: a training server with the sample data of " + p.name + " - nothing is saved and the real venue is not touched.");
         m.addListener(new MonitorListener() { public void onAlert(crowdwatch.model.Alert a) { System.out.println(a); } });
         // radio relay: messages for units without an online device are printed for a radio operator
         m.addChannel(new ConsoleRelay(System.out, Clock.SYSTEM));
@@ -134,8 +143,20 @@ public class App {
         watchdog.start();
         crowdwatch.ds.LinkedList<crowdwatch.feed.CrowdFeed> feeds = crowdwatch.feed.Feeds.start(m, p.feeds, System.out::println);
         crowdwatch.net.ApiServer api = new crowdwatch.net.ApiServer(m, args.length > 3 ? args[3] : null, args.length > 4 ? args[4] : null, crowdwatch.net.ApiServer.RATE_LIMIT);
-        crowdwatch.net.Accounts accounts = openAccounts(db, p.code);
+        crowdwatch.net.Accounts accounts = openAccounts(db, p.code + (drill ? "-drill" : ""));
         api.setAccounts(accounts);
+        api.setDatabase(db);
+        api.setDataFolder(Path.of("crowdwatch-data"));
+        api.setDrill(drill);
+        if (p.notifyUrl != null) {
+            new crowdwatch.core.Notifier(m, p.notifyUrl, p.notifyMinutes).start();
+            System.out.println("Urgent alerts nobody deals with in " + p.notifyMinutes + " min are sent to " + java.net.URI.create(p.notifyUrl).getHost());
+        }
+        if (drillScript != null) {
+            crowdwatch.feed.DrillScript ds = crowdwatch.feed.DrillScript.read(Path.of(drillScript));
+            ds.start(m);
+            System.out.println("Drill script started: " + ds.name());
+        }
         if (accounts.hasUsers()) System.out.println("Personal logins are on: " + accounts.users().length + " user(s). Every change is written to the audit log.");
         else if (args.length < 4 || args[3].isBlank()) System.out.println("WARNING: no users and no control key - anyone on the network can read and change everything. Add users with: java -jar CrowdWatch.jar --user <name> <ROLE>");
         int bound = api.start(port, https ? tls() : null);
@@ -164,6 +185,28 @@ public class App {
 
     /** Seconds between automatic saves (property crowdwatch.autosave, at least 10; default 60). */
     public static final int AUTOSAVE_SECONDS = Math.max(10, Integer.getInteger("crowdwatch.autosave", 60));
+
+    /**
+     * Head office sites: {@code --site add <name> <address> [control-key]}, {@code --site remove <name>},
+     * {@code --site list}. Kept in crowdwatch-data/sites.txt (readable by its owner only); the web
+     * console's Sites view shows every site's situation.
+     */
+    private static void site(String[] args) throws java.io.IOException {
+        Path f = Path.of("crowdwatch-data", "sites.txt");
+        java.util.List<String> lines = java.nio.file.Files.exists(f) ? new java.util.ArrayList<>(java.nio.file.Files.readAllLines(f)) : new java.util.ArrayList<>();
+        if (args.length >= 2 && args[1].equals("list")) { for (String l : lines) if (!l.startsWith("#")) System.out.println(l.replaceAll("\\|\\s*[^|]*$", "| (key hidden)")); return; }
+        if (args.length >= 4 && args[1].equals("add")) {
+            if (!args[3].matches("https?://\\S+")) { System.out.println("The address must start with http:// or https://"); return; }
+            lines.removeIf(l -> l.split("\\|")[0].trim().equalsIgnoreCase(args[2]));
+            lines.add(args[2] + " | " + args[3] + " | " + (args.length > 4 ? args[4] : ""));
+        } else if (args.length >= 3 && args[1].equals("remove")) {
+            lines.removeIf(l -> l.split("\\|")[0].trim().equalsIgnoreCase(args[2]));
+        } else { System.out.println("Usage: --site add <name> <http(s)://address:port> [control-key] | --site remove <name> | --site list"); return; }
+        java.nio.file.Files.createDirectories(f.getParent());
+        java.nio.file.Files.write(f, lines);
+        crowdwatch.net.Accounts.ownerOnlyFile(f);
+        System.out.println("Saved " + f.toAbsolutePath() + " (" + lines.size() + " site(s))");
+    }
 
     /** Installation-wide accounts file (password hashes only). */
     public static final Path ACCOUNTS_FILE = Path.of("crowdwatch-data", "accounts.txt");
@@ -227,6 +270,11 @@ public class App {
         if (args[2].equalsIgnoreCase("off") || args[2].equalsIgnoreCase("on")) done = a.setActive(args[1], args[2].equalsIgnoreCase("on"));
         else {
             crowdwatch.net.Accounts.Role role = crowdwatch.net.Accounts.Role.valueOf(args[2].toUpperCase());
+            if (args.length > 3 && args[3].equalsIgnoreCase("directory")) {
+                done = a.setDirectoryUser(args[1], role);
+                System.out.println(done == null ? "Saved: " + args[1] + " signs in with the company directory (" + (crowdwatch.net.Directory.url() == null ? "set CROWDWATCH_LDAP_URL" : crowdwatch.net.Directory.url()) + ")" : "Not saved: " + done);
+                return;
+            }
             String pw = System.getenv("CROWDWATCH_PASSWORD");
             if (pw == null) {
                 java.io.Console c = System.console();

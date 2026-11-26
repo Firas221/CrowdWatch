@@ -522,7 +522,10 @@ public final class AutoRules {
     }
 
     /** @return the level the area should have now (thresholds and event offset applied, no hysteresis) */
-    private CrowdLevel levelNow(Area a) { return m.levelFor(a.percent() + a.thresholdOffset); }
+    private CrowdLevel levelNow(Area a) {
+        CrowdLevel byPercent = m.levelFor(a.percent() + a.thresholdOffset), byDensity = m.densityLevel(a);
+        return byDensity.compareTo(byPercent) > 0 ? byDensity : byPercent;
+    }
 
     /** @return names of events whose preparation or peak is running */
     LinkedList<String> activeEvents() {

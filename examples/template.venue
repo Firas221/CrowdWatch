@@ -18,6 +18,10 @@
 # gateway:     URL       radio or SMS gateway that receives every message sent to units (HTTP POST)
 # archive:     24h|30m   how long resolved incidents stay in memory before moving to the archive tables (24h)
 # retention:   30        days after which the details and contact of archived incidents are erased (0 = keep; default 30)
+# density:     2 4 5     people per m2 at which an area with a size becomes MODERATE, HIGH and CRITICAL (default 2 4 5)
+# notify:      URL [MIN] urgent alerts nobody dealt with in MIN minutes (default 3) are posted there (SMS, WhatsApp or e-mail
+#                        gateway) as JSON; the token in CROWDWATCH_NOTIFY_TOKEN is sent as a bearer token
+# outdoor:     AREA ...  areas in the open air, named in heat-stress alerts (default: COURTYARD, PLAZA and ENTRANCE areas)
 # feed:        folder PATH [SECONDS]               read count files that a counting system drops into a folder
 # feed:        poll URL [SECONDS] [TOKEN-VARIABLE] ask a counting system's web address for counts (text or JSON)
 # feed:        tcp PORT [ALLOWED-ADDRESS ...]      take count lines from devices over a network socket
@@ -81,6 +85,8 @@ link: ATRIUM PARK 4 150 stairs
 # scale:    metres per map unit (needed for "auto" link times; walking speed 60 m/min)
 # pos:      AREA x y width height
 # shape:    AREA x1 y1 x2 y2 x3 y3 ...   an outline for an area that is not a rectangle (replaces its pos)
+# size:     AREA m2                     floor area: the level then also follows people per m2 (see density:)
+# camera:   AREA http(s)://...          the camera's web view, opened from the area's window in the console
 # exitflow: EXIT people-per-minute   lets the evacuation plan spread people over the exits and estimate the time to clear
 # zone:     NAME | AREA AREA ...   fire zones: an alarm proposes evacuating its zone; the console can evacuate one
 # lifts are never used in an evacuation plan

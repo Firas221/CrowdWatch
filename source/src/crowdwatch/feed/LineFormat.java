@@ -13,6 +13,7 @@ import crowdwatch.model.Enums.Source;
  *   GATE-A,+3   GATE-A,-2  people who entered or left (a counter that only counts passes)
  *   move,GATE-A,PASS-1,4   4 people went through the door from GATE-A to PASS-1
  *   move,OUTSIDE,CURB-1,10 10 people came in through an outer gate (OUTSIDE = off the site)
+ *   weather,38.5,45        temperature (C) and relative humidity (%) for the heat-stress check
  * </pre>
  * Blank lines, lines starting with # and a header line starting with "area" are skipped.
  */
@@ -31,7 +32,10 @@ public final class LineFormat {
         String[] f = line.split("\\s*[,;\\t]\\s*|\\s+");
         try {
             Result r;
-            if (f[0].equalsIgnoreCase("move")) {
+            if (f[0].equalsIgnoreCase("weather")) {
+                if (f.length < 3) return "expected weather,temperature,humidity";
+                r = m.weather(Double.parseDouble(f[1]), Double.parseDouble(f[2]));
+            } else if (f[0].equalsIgnoreCase("move")) {
                 if (f.length < 4) return "expected move,from,to,count";
                 r = m.movePeople(f[1].toUpperCase(), f[2].toUpperCase(), Integer.parseInt(f[3]), f.length > 4 ? Source.valueOf(f[4].toUpperCase()) : fallback);
             } else {

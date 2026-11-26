@@ -56,6 +56,8 @@ public class CrowdMonitor {
     private VenueProfile venue;
     // MODERATE / HIGH / CRITICAL start percentages, copied from the venue
     private int[] thresholds = { 50, 75, 90 };
+    // people per m2 for MODERATE, HIGH, CRITICAL (areas with a size)
+    private double[] density = { 2.0, 4.0, 5.0 };
     // area ID -> area
     private final AVLTree<String, Area> areas = new AVLTree<>();
     // unit ID -> unit
@@ -135,6 +137,9 @@ public class CrowdMonitor {
     public String venueName() { return venue == null ? "No venue" : venue.name; }
     /** @return the three level thresholds in percent (MODERATE, HIGH, CRITICAL) */
     public int[] thresholds() { return thresholds; }
+
+    /** @return people per square metre at which an area with a known size becomes MODERATE, HIGH and CRITICAL */
+    public double[] densityThresholds() { return density; }
     /** Direct access to the area tree. Hold the monitor's lock while using it. */
     public AVLTree<String, Area> areaTree() { return areas; }
     /** Direct access to the unit tree. Hold the monitor's lock while using it. */
@@ -245,10 +250,17 @@ public class CrowdMonitor {
         officer = null; officerCheckIn = null; supervisionAlerted = null;
         evacuationZone = null; evacuationBy = null; evacuationStarted = null; evacuationPlan.clear();
         rules.reset();
+        records.reset();
         gateBaseline = 0; gateIn = 0; gateOut = 0; gateCounting = false; countMismatchSince = null; countMismatchAlerted = false;
         for (String[] a : p.areas) {
             boolean restricted = a.length > 5 && a[5].equalsIgnoreCase("restricted");
             addArea(a[0], a[1], a[2], a[3], Integer.parseInt(a[4]), restricted);
+        }
+        density = p.density.clone();
+        for (String[] sz : p.sizes) {
+            Area a = findArea(sz[0]);
+            if (a == null) throw new IllegalArgumentException("size: unknown area " + sz[0]);
+            a.sizeM2 = Double.parseDouble(sz[1]);
         }
         linkInfo.clear();
         exitFlow.clear();
@@ -405,6 +417,124 @@ public class CrowdMonitor {
      *
      * @return the outcome, including any incident dispatched from a queue
      */
+    // ================================================================ records, scout phones, weather
+
+    /** Notes that urgent alerts were sent to the duty officer's phone because nobody dealt with them. */
+    public synchronized void alertNotified(int n) {
+        alert(AlertKind.NOTIFY, "officer", n + " urgent alert(s) sent to the duty officer's phone: no officer dealt with them at a console in time");
+        changed();
+    }
+
+    /** Frames, messages and weather (call under the monitor's lock). */
+    public final Records records = new Records(this);
+
+    /** @return the outdoor areas: the venue's outdoor: line, else COURTYARD, PLAZA and ENTRANCE areas */
+    public synchronized String[] outdoorAreas() {
+        LinkedList<String> out = new LinkedList<>();
+        for (Area a : areas.inOrder()) {
+            boolean o = venue != null && !venue.outdoor.isEmpty() ? venue.outdoor.contains(a.id)
+                : a.type.equalsIgnoreCase("COURTYARD") || a.type.equalsIgnoreCase("PLAZA") || a.type.equalsIgnoreCase("ENTRANCE");
+            if (o && !a.restricted) out.addLast(a.id);
+        }
+        return out.toArray(new String[0]);
+    }
+
+    /** Records temperature (C) and relative humidity (%); alerts when the heat-stress band changes. */
+    public synchronized Result weather(double tempC, double humidity) {
+        Result r = records.weather(tempC, humidity, now());
+        changed();
+        return r;
+    }
+
+    /**
+     * A text from the control room to one unit (and its radio, if its phone is offline).
+     *
+     * @param incident the incident it is about, or 0
+     */
+    public synchronized Result messageUnit(String unitId, String text, String by, int incident) {
+        Unit u = findUnit(unitId);
+        if (u == null) return Result.fail("No unit " + unitId + ".");
+        if (text == null || text.isBlank()) return Result.fail("Message text is required.");
+        if (tooLong("Message", text, 300) != null) return tooLong("Message", text, 300);
+        String who = by == null || by.isBlank() ? "control" : by.trim();
+        records.addMessage(now(), u.id, false, who, incident, text.trim(), null);
+        notifyUnit(u, MessageKind.MESSAGE, incident > 0 ? findIncident(incident) : null, "FROM CONTROL (" + who + "): " + text.trim());
+        changed();
+        return Result.ok("Message sent to " + u.id + ".");
+    }
+
+    /**
+     * A text (and optionally a photo already stored by the server) from a unit to the control room.
+     *
+     * @param photo the stored photo's file name, or null
+     */
+    public synchronized Result messageFromUnit(String unitId, String text, int incident, String photo) {
+        Unit u = findUnit(unitId);
+        if (u == null) return Result.fail("No unit " + unitId + ".");
+        if ((text == null || text.isBlank()) && photo == null) return Result.fail("Write a message or add a photo.");
+        if (text != null && tooLong("Message", text, 500) != null) return tooLong("Message", text, 500);
+        devicePoll(u.id);
+        Records.Message msg = records.addMessage(now(), u.id, true, u.id, incident, text == null ? "" : text.trim(), photo);
+        alert(AlertKind.MESSAGE, u.id, u.id + (incident > 0 ? " about I" + incident : "") + ": " + (msg.text.isEmpty() ? "" : msg.text) + (photo != null ? " [photo]" : ""));
+        changed();
+        return Result.ok("Message sent to the control room.");
+    }
+
+    /** A unit says where it is now (scout phone): it is moved there unless the area is staff-only. */
+    public synchronized Result reportPosition(String unitId, String areaId) {
+        Unit u = findUnit(unitId);
+        if (u == null) return Result.fail("No unit " + unitId + ".");
+        Area a = findArea(areaId);
+        if (a == null) return Result.fail("Unknown area: " + areaId);
+        if (a == u.area) return Result.ok(u.id + " is at " + a.id + ".");
+        if (a.restricted) return Result.fail(a.name + " is staff-only: ask the control room to approve the move.");
+        String from = u.area.id;
+        u.area = a;
+        u.history.addLast(new HistoryEntry(now(), "Reported its position: " + from + " -> " + a.id));
+        devicePoll(u.id);
+        changed();
+        return Result.ok(u.id + " is now at " + a.id + ".");
+    }
+
+    /** A unit starts or ends its duty from its phone. Going off duty with an open task is refused. */
+    public synchronized Result duty(String unitId, boolean on) {
+        Unit u = findUnit(unitId);
+        if (u == null) return Result.fail("No unit " + unitId + ".");
+        if (!on && activeIncident(u.id) != null) return Result.fail(u.id + " still has " + activeIncident(u.id) + ": finish or hand it over first.");
+        devicePoll(u.id);
+        Result r = setUnitStatus(u.id, on ? UnitStatus.AVAILABLE : UnitStatus.OFF_DUTY);
+        if (r.ok) u.history.addLast(new HistoryEntry(now(), on ? "Started duty (phone)" : "Ended duty (phone)"));
+        return r;
+    }
+
+    /** The battery level a unit's phone reported; one alert when it drops to 15 % or below. */
+    public synchronized void battery(String unitId, int percent) {
+        Unit u = findUnit(unitId);
+        if (u == null || percent < 0 || percent > 100) return;
+        u.battery = percent;
+        if (percent <= 15 && !u.batteryWarned) {
+            u.batteryWarned = true;
+            alert(AlertKind.BATTERY, u.id, u.id + " phone battery at " + percent + "%: it may stop receiving tasks - send a charger or use the radio");
+        } else if (percent >= 30) u.batteryWarned = false;
+    }
+
+    /**
+     * Erases the personal data of an incident held in memory (details and contact), for a
+     * request under data-protection law. The database copy is erased by the caller.
+     *
+     * @return true if the incident was found
+     */
+    public synchronized boolean erasePersonal(int id, String by) {
+        Incident i = findIncident(id);
+        if (i == null) return false;
+        i.details = "(erased on request)";
+        i.contact = null;
+        i.history.addLast(new HistoryEntry(now(), "Personal data erased on request by " + by));
+        for (Records.Message x : records.messages(null, id)) { x.text = "(erased on request)"; x.photo = null; }
+        changed();
+        return true;
+    }
+
     public synchronized Result setUnitStatus(String unitId, UnitStatus status) {
         Unit u = findUnit(unitId);
         if (u == null) return Result.fail("No unit " + unitId + ".");
@@ -433,10 +563,29 @@ public class CrowdMonitor {
     private CrowdLevel levelWithHysteresis(Area a) {
         // during a scheduled event the area's thresholds are lower: the same as a higher percentage
         int pct = a.percent() + a.thresholdOffset;
+        CrowdLevel byDensity = densityLevel(a);
         CrowdLevel next = levelFor(pct);
+        if (byDensity.compareTo(next) > 0) next = byDensity;   // the more dangerous of the two
         if (next.compareTo(a.level) >= 0 || a.level == CrowdLevel.LOW) return next;
         int threshold = thresholds[a.level.ordinal() - 1];   // MODERATE -> thresholds[0], HIGH -> [1], CRITICAL -> [2]
-        return pct > threshold - HYSTERESIS_PERCENT ? a.level : next;
+        boolean holdByPercent = pct > threshold - HYSTERESIS_PERCENT;
+        // with a size, the level also holds while the density is within 5 % of the current level's density
+        boolean holdByDensity = a.sizeM2 > 0 && a.density() > density[a.level.ordinal() - 1] * 0.95;
+        return holdByPercent || holdByDensity ? a.level : next;
+    }
+
+    /**
+     * The level from people per square metre (LOW if the area's size is not known). Capacity
+     * figures are often set for comfort or fire rules; density says directly how tightly people
+     * stand, which is what makes a crowd dangerous.
+     */
+    public synchronized CrowdLevel densityLevel(Area a) {
+        double d = a.density();
+        if (a.sizeM2 <= 0) return CrowdLevel.LOW;
+        if (d >= density[2]) return CrowdLevel.CRITICAL;
+        if (d >= density[1]) return CrowdLevel.HIGH;
+        if (d >= density[0]) return CrowdLevel.MODERATE;
+        return CrowdLevel.LOW;
     }
 
     /**
@@ -1338,6 +1487,7 @@ public class CrowdMonitor {
     public synchronized String tick() {
         if (venue == null) return "";
         LocalDateTime t = now();
+        records.sample(t);
         StringBuilder done = new StringBuilder();
         int sup = supervisionMinutes();
         boolean overdue = officerCheckIn == null || Duration.between(officerCheckIn, t).toMinutes() >= sup;

@@ -55,6 +55,13 @@ html[dir=rtl] body{font-family:Tahoma,'Noto Sans Arabic',system-ui,sans-serif}
 <div id='out'></div>
 <button id='sos' onclick='sos()'>SOS</button>
 <button class='found' onclick='foundPerson()'>I found someone who is lost</button>
+<h3>Message to the control room</h3>
+<textarea id='mtext' maxlength='300' placeholder='Write here' style='width:100%%;box-sizing:border-box;padding:10px;border-radius:8px;border:0;font:inherit;min-height:60px'></textarea>
+<input id='mphoto' type='file' accept='image/*' capture='environment' style='background:#26394d;color:#fff'>
+<button class='scene' onclick='sendMsg()'>Send to the control room</button>
+<h3>Where am I</h3>
+<div class='row' style='grid-template-columns:2fr 1fr'><select id='here' style='padding:12px;border-radius:8px;font:inherit'></select><button class='ack' onclick='imHere()'>I am here</button></div>
+<div class='row' style='grid-template-columns:1fr 1fr'><button class='ack' onclick='duty(1)'>Start duty</button><button class='done' onclick='duty(0)'>End duty</button></div>
 <h3>Messages</h3><div id='msgs'></div>
 <button class='done' onclick='localStorage.removeItem("cwUnit");location.reload()'>Change unit</button>
 </div>
@@ -67,7 +74,7 @@ function start(){unit=$('uid').value.trim().toUpperCase();if(!unit)return;localS
 function show(){$('setup').style.display='none';$('main').style.display='block';$('who').textContent='Unit '+unit;loadMap().then(poll);setInterval(poll,3000);}
 function alarm(){try{navigator.vibrate&&navigator.vibrate([400,150,400,150,400]);const c=new AudioContext(),o=c.createOscillator();o.frequency.value=880;o.connect(c.destination);o.start();setTimeout(()=>{o.stop();c.close()},700);}catch(e){}}
 async function poll(){try{
- const r=await fetch('/api/unit?id='+encodeURIComponent(unit),{headers:{'X-Api-Key':key}});
+ const r=await fetch('/api/unit?id='+encodeURIComponent(unit)+(battery>=0?'&battery='+battery:''),{headers:{'X-Api-Key':key}});
  if(r.status==401||r.status==403){$('out').textContent=T('Key not accepted: tap Change unit and enter the scout key.');return;}
  const u=await r.json();
  if(!u.ok){$('out').textContent=u.message;return;}
@@ -92,8 +99,21 @@ async function post(path,data){const b=new URLSearchParams(data);if(key)b.set('k
 function act(path){if(path=='/api/ack')return post(path,{unit});if(!task){$('out').textContent='No task.';return;}post(path,{id:task.id});}
 function resolve(){if(!task){$('out').textContent='No task.';return;}const n=prompt(T('Closing note (optional)'))??'';post('/api/resolve',{id:task.id,note:n});}
 let layout=null,mapUrl=null;
+let battery=-1;
+try{navigator.getBattery&&navigator.getBattery().then(b=>{const f=()=>battery=Math.round(b.level*100);f();b.addEventListener('levelchange',f);});}catch(e){}
+function fillHere(){const s=$('here');if(!layout||!layout.areas||s.options.length)return;
+ layout.areas.filter(a=>!a.restricted).forEach(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.id;s.appendChild(o);});}
+function imHere(){post('/api/position',{unit,area:$('here').value});}
+function duty(on){if(!on&&!confirm(T('End your duty now?')))return;post('/api/duty',{unit,on});}
+function shrink(file){return new Promise((ok,bad)=>{const img=new Image();img.onload=()=>{const k=Math.min(1,1600/Math.max(img.width,img.height));
+ const c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+ ok(c.toDataURL('image/jpeg',0.8));};img.onerror=bad;img.src=URL.createObjectURL(file);});}
+async function sendMsg(){const t=$('mtext').value.trim(),f=$('mphoto').files[0];if(!t&&!f){$('out').textContent=T('Write a message or add a photo.');return;}
+ const data={unit,text:t};if(task)data.incident=task.id;
+ try{if(f)data.photo=await shrink(f);}catch(e){$('out').textContent=T('The photo could not be read.');return;}
+ await post('/api/message',data);$('mtext').value='';$('mphoto').value='';}
 async function loadMap(){try{const r=await fetch('/api/layout',{headers:{'X-Api-Key':key}});layout=await r.json();
- if(layout.map&&layout.image){const b=await fetch('/api/map',{headers:{'X-Api-Key':key}});if(b.ok)mapUrl=URL.createObjectURL(await b.blob());}}catch(e){layout=null;}}
+ fillHere();if(layout.map&&layout.image){const b=await fetch('/api/map',{headers:{'X-Api-Key':key}});if(b.ok)mapUrl=URL.createObjectURL(await b.blob());}}catch(e){layout=null;}}
 function drawMap(u){const el=$('map');if(!layout||!layout.map||!u.task){el.style.display='none';return;}
  const c={};layout.areas.forEach(p=>c[p.id]=[p.x+p.w/2,p.y+p.h/2]);
  const m=/^\\[(.*)\\]/.exec(u.task.route||'');const ids=m?m[1].split(' -> '):[u.area,u.task.area];

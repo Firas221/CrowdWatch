@@ -28,6 +28,14 @@ area: STAND-W | West Stand (VIP) | Bowl | SEATING | 10000
 area: METRO | Stadium Metro Station | Outer ring | TRANSIT | 4000
 area: PITCH | Pitch and Tunnel | Bowl | RESTRICTED | 200 | restricted
 
+# floor areas in square metres (estimates): the plazas and concourses fill standing up
+size: PLAZA-N 2800
+size: PLAZA-S 2800
+size: TURN-N 520
+size: TURN-S 520
+size: CONC-N 2200
+size: CONC-S 2200
+
 link: METRO PLAZA-N 6
 link: METRO PLAZA-S 9
 link: PLAZA-N TURN-N 2 1200

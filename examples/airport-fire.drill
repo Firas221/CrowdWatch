@@ -1,0 +1,18 @@
+# Training exercise for the sample airport: a busy evening, a lost child, a medical case and a fire
+# alarm in baggage claim, with the heat rising outside. Start it on a drill server:
+#   program/run-drill.bat airport 8081 ..\examples\airport-fire.drill     (Windows)
+#   program/run-drill.sh airport 8081 ../examples/airport-fire.drill      (macOS, Linux)
+# then open http://<this-pc>:8081/ - every screen shows DRILL; nothing reaches the real venue.
+# One event a line: MM:SS after the start, then the command (see the guide, Drills).
+00:10 say Exercise started: evening departure bank, Terminal 1
+00:30 count CHECKIN-1 1150
+01:00 move OUTSIDE CURB-1 400
+01:30 count SEC-1 420
+02:00 lost GATE-A Boy, about 7, red jacket, speaks English
+03:00 incident MEDICAL DUTYFREE-1 Elderly man feeling faint
+04:00 weather 42 30
+05:00 count GATE-A 1450
+06:00 alarm BAGGAGE-1 smoke detector in the baggage hall
+08:00 sos SEC-1 fight in the queue, one person hurt
+10:00 say Exercise ends in 2 minutes: finish your actions and write down what you did
+12:00 say Exercise over - thank you
