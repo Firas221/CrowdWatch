@@ -204,7 +204,7 @@ public class App {
 
     /**
      * Command line user management:
-     * {@code --user <name> <VIEWER|OPERATOR|OFFICER|ADMIN>} adds the user or changes the role and
+     * {@code --user <name> <OPERATOR|OFFICER|ADMIN>} adds the user or changes the role and
      * password (asked twice on the console, or taken from CROWDWATCH_PASSWORD for scripts);
      * {@code --user <name> off} / {@code on} switches a user off or on; {@code --user list} lists them.
      */
@@ -214,7 +214,7 @@ public class App {
             for (crowdwatch.net.Accounts.User u : a.users()) System.out.println(u.name + "  " + u.role + (u.active ? "" : "  (off)"));
             return;
         }
-        if (args.length < 3) { System.out.println("Usage: java -jar CrowdWatch.jar --user <name> <VIEWER|OPERATOR|OFFICER|ADMIN|off|on>   or   --user list"); return; }
+        if (args.length < 3) { System.out.println("Usage: java -jar CrowdWatch.jar --user <name> <OPERATOR|OFFICER|ADMIN|off|on>   or   --user list"); return; }
         String done;
         if (args[2].equalsIgnoreCase("off") || args[2].equalsIgnoreCase("on")) done = a.setActive(args[1], args[2].equalsIgnoreCase("on"));
         else {

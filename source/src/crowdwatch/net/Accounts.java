@@ -25,8 +25,7 @@ import crowdwatch.ds.LinkedList;
  * <p>
  * <b>Roles</b> (each includes the ones before it):
  * <ul>
- * <li>VIEWER - reads everything, changes nothing;</li>
- * <li>OPERATOR - enters counts and incidents, resolves, reassigns, raises alarms;</li>
+ * <li>OPERATOR - reads everything; enters counts and incidents, resolves, reassigns, raises alarms;</li>
  * <li>OFFICER - decisions: reviews, evacuation, public messages, automation, device codes, audit log;</li>
  * <li>ADMIN - also manages the user accounts.</li>
  * </ul>
@@ -44,7 +43,7 @@ import crowdwatch.ds.LinkedList;
  */
 public class Accounts {
     /** Roles, lowest first. */
-    public enum Role { VIEWER, OPERATOR, OFFICER, ADMIN }
+    public enum Role { OPERATOR, OFFICER, ADMIN }
 
     /** PBKDF2 rounds per password check. */
     public static final int ITERATIONS = 100_000;
@@ -144,7 +143,7 @@ public class Accounts {
      */
     public synchronized String setUser(String name, Role role, String password) {
         if (name == null || !name.trim().matches("[A-Za-z0-9._-]{2,40}")) return "user name must be 2 to 40 letters, digits, dots, dashes or underscores";
-        if (role == null) return "role must be VIEWER, OPERATOR, OFFICER or ADMIN";
+        if (role == null) return "role must be OPERATOR, OFFICER or ADMIN";
         User u = users.search(key(name));
         if (u == null && password == null) return "a new user needs a password";
         if (password != null && password.length() < MIN_PASSWORD) return "password must have at least " + MIN_PASSWORD + " characters";
@@ -316,8 +315,11 @@ public class Accounts {
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             String[] f = line.split("\\|", -1);
             if (f.length == 6 && f[0].equals("user")) {
-                User u = new User(f[1], Role.valueOf(f[2]));
-                u.active = f[3].equals("1");
+                // the VIEWER role of earlier versions was removed: such a user is kept, but switched off
+                // until an administrator gives them a role, so nobody gains rights by the upgrade
+                boolean oldViewer = f[2].equals("VIEWER");
+                User u = new User(f[1], oldViewer ? Role.OPERATOR : Role.valueOf(f[2]));
+                u.active = f[3].equals("1") && !oldViewer;
                 u.salt = f[4];
                 u.hash = f[5];
                 users.insert(key(f[1]), u);

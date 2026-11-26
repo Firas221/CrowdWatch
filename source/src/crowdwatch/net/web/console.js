@@ -59,7 +59,7 @@
     else if (S.key) h['X-Api-Key'] = S.key;
     return h;
   }
-  var RANK = { VIEWER: 0, OPERATOR: 1, OFFICER: 2, ADMIN: 3 };
+  var RANK = { OPERATOR: 1, OFFICER: 2, ADMIN: 3 };
   // true if this browser's user has at least the role (the control key counts as ADMIN)
   function can(role) { return !S.token || (RANK[S.role] || 0) >= RANK[role]; }
   function api(path, form) {
@@ -676,7 +676,7 @@
           return '<tr><td class="mono">' + esc(u.name) + '</td><td>' + esc(u.role) + '</td><td>' + (u.active ? 'OK' : '-') + '</td></tr>';
         }).join('') + '</tbody></table></div>' : '')
         + '<form class="form" data-form="user"><div class="inline"><label>User name<input id="uName" data-keep required autocapitalize="none"></label>'
-        + '<label>Role<select id="uRole" data-keep>' + ['VIEWER', 'OPERATOR', 'OFFICER', 'ADMIN'].map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('') + '</select></label></div>'
+        + '<label>Role<select id="uRole" data-keep>' + ['OPERATOR', 'OFFICER', 'ADMIN'].map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('') + '</select></label></div>'
         + '<div class="inline"><label>Password<input id="uPass" type="password" autocomplete="new-password" placeholder="empty keeps the current password"></label>'
         + '<label class="switch"><input type="checkbox" id="uActive" data-keep checked> Can sign in</label></div><button class="btn-primary">Save user</button></form>';
     }
@@ -857,7 +857,7 @@
         $('lgPass').value = '';
         S.token = r.token; S.role = r.role; S.officer = r.name; S.key = '';
         store.set('token', S.token); store.set('role', S.role); store.set('officer', S.officer); store.set('key', null);
-        // officers check in on signing in; viewers and operators do not supervise
+        // officers check in on signing in; operators do not supervise
         (can('OFFICER') ? api('/api/checkin', {}) : Promise.resolve({ ok: true, message: 'Signed in as ' + r.name + ' (' + r.role + ')' })).then(function (c) { start(); toast(c.message, c.ok ? 'good' : 'bad'); });
       }).catch(function (err) { $('lgErr').textContent = err.message || 'The server cannot be reached.'; });
       return;

@@ -4,7 +4,7 @@ Desktop:   program/run.bat (or ./run.sh) -> choose Airport, Stadium, Umrah, or o
 Modern UI: program/run-fx.bat (or ./run-fx.sh) -> JavaFX console: everything in the Swing window plus the venue map, lost persons,
            evacuation proposals, public messages and the count check; dark control-room theme (Light button for light)
            (JavaFX 21 for Windows, Linux x64 and macOS is in program/lib/javafx)
-Users:     program/add-user.bat <name> <VIEWER|OPERATOR|OFFICER|ADMIN> (or ./add-user.sh) -> personal logins with roles;
+Users:     program/add-user.bat <name> <OPERATOR|OFFICER|ADMIN> (or ./add-user.sh) -> personal logins with roles;
            the first user should be an ADMIN. Passwords are stored as PBKDF2 hashes in crowdwatch-data/accounts.txt.
            Every change is written to the audit log (database table AUDIT and crowdwatch-data/audit/<venue>/).
 Server:    program/run-server.bat        -> control room browsers open http://<this-pc>:8080/ (web console: sign in with
@@ -17,7 +17,7 @@ Server:    program/run-server.bat        -> control room browsers open http://<t
 HTTPS:     add --https (or set CROWDWATCH_HTTPS=1 for run-server): uses crowdwatch-data/tls/server.p12 (-Dcrowdwatch.keystore=...,
            password in CROWDWATCH_KEYSTORE_PASSWORD) or makes a self-signed certificate (browsers warn once until trusted)
 Arabic:    the web console and the scout page have a language button (العربية): right to left, kept per browser
-Tests:     program/run-tests.bat (or ./run-tests.sh) -> 116 cases, see test-evidence/test-output.txt
+Tests:     program/run-tests.bat (or ./run-tests.sh) -> 117 cases, see test-evidence/test-output.txt
 New venue: copy examples/template.venue, edit, open via Venue > Open venue file
 Scouts:    issued phones/tablets open http://<server>:8080/scout (task, route and route map, Acknowledge, On scene, Resolved, SOS,
            lost-person lookouts with a Found button, 'I found someone who is lost')

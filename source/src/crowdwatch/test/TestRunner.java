@@ -1297,30 +1297,37 @@ public class TestRunner {
         String r1 = acc.setUser("x", crowdwatch.net.Accounts.Role.ADMIN, "longenough");
         String r2 = acc.setUser("admin", crowdwatch.net.Accounts.Role.ADMIN, "short");
         String r3 = acc.setUser("admin", crowdwatch.net.Accounts.Role.ADMIN, "Admin-pass-1");
-        String r4 = acc.setUser("admin", crowdwatch.net.Accounts.Role.VIEWER, null);
+        String r4 = acc.setUser("admin", crowdwatch.net.Accounts.Role.OPERATOR, null);
         String r5 = acc.setActive("admin", false);
         acc.setUser("sara", crowdwatch.net.Accounts.Role.OFFICER, "Sara-pass-1");
         acc.setUser("omar", crowdwatch.net.Accounts.Role.OPERATOR, "Omar-pass-1");
-        acc.setUser("vera", crowdwatch.net.Accounts.Role.VIEWER, "Vera-pass-1");
         String fileText = java.nio.file.Files.readString(accFile);
         crowdwatch.net.Accounts reread = new crowdwatch.net.Accounts(accFile);
         check("Accounts: names and password length are checked, the last administrator cannot be demoted or switched off, the file holds hashes only and reads auditBack",
-            "short name refused, short password refused, admin added, demote refused, switch-off refused, no password in file, 4 users read back, login OK",
+            "short name refused, short password refused, admin added, demote refused, switch-off refused, no password in file, 3 users read back, login OK",
             (r1 != null ? "short name refused" : "accepted") + ", " + (r2 != null ? "short password refused" : "accepted") + ", " + (r3 == null ? "admin added" : r3)
                 + ", " + (r4 != null ? "demote refused" : "demoted") + ", " + (r5 != null ? "switch-off refused" : "switched off")
                 + ", " + (fileText.contains("Sara-pass-1") || fileText.contains("Admin-pass-1") ? "PASSWORD IN FILE" : "no password in file")
                 + ", " + reread.users().length + " users read back, " + (reread.login("SARA", "Sara-pass-1", LocalDateTime.of(2026, 12, 1, 9, 0)) != null ? "login OK" : "login failed"));
 
+        java.nio.file.Path oldFile = accFile.resolveSibling("old-accounts.txt");
+        java.nio.file.Files.writeString(oldFile, fileText + "user|olga|VIEWER|1|AAAA|BBBB\n");
+        crowdwatch.net.Accounts upgraded = new crowdwatch.net.Accounts(oldFile);
+        crowdwatch.net.Accounts.User olga = upgraded.user("olga");
+        check("Roles: only OPERATOR, OFFICER and ADMIN; a VIEWER from an earlier version is kept but switched off, so nobody gains rights by the upgrade",
+            "3 roles, olga OPERATOR switched off, others unchanged",
+            crowdwatch.net.Accounts.Role.values().length + " roles, olga " + (olga == null ? "missing" : olga.role + (olga.active ? " still on" : " switched off"))
+                + ", others " + (upgraded.user("sara").role == crowdwatch.net.Accounts.Role.OFFICER && upgraded.user("sara").active ? "unchanged" : "changed"));
         LocalDateTime lt = LocalDateTime.of(2026, 12, 1, 9, 0);
         int wrong = 0;
         for (int k = 0; k < crowdwatch.net.Accounts.MAX_FAILURES; k++) if (acc.login("omar", "guess" + k, lt) == null) wrong++;
         String lockedRight = acc.login("omar", "Omar-pass-1", lt.plusMinutes(1));
         String afterLock = acc.login("omar", "Omar-pass-1", lt.plusMinutes(crowdwatch.net.Accounts.LOCK_MINUTES + 1));
-        String tok = acc.login("vera", "Vera-pass-1", lt);
+        String tok = acc.login("sara", "Sara-pass-1", lt);
         crowdwatch.net.Accounts.Who sw1 = acc.session(tok, lt.plusHours(1));
         crowdwatch.net.Accounts.Who sw2 = acc.session(tok, lt.plusHours(crowdwatch.net.Accounts.SESSION_HOURS + 1));
         check("Logins: 5 wrong passwords lock the name for 5 minutes (even the right password is refused), a session lasts 12 hours",
-            "5 refused, locked: refused, after 5 min: OK, session vera VIEWER, expired after 12 h",
+            "5 refused, locked: refused, after 5 min: OK, session sara OFFICER, expired after 12 h",
             wrong + " refused, locked: " + (lockedRight == null ? "refused" : "accepted") + ", after 5 min: " + (afterLock != null ? "OK" : "refused")
                 + ", session " + (sw1 == null ? "none" : sw1.name + " " + sw1.role) + ", " + (sw2 == null ? "expired after 12 h" : "still valid"));
 
@@ -1336,12 +1343,10 @@ public class TestRunner {
         String noLogin = call(hc, base + "/api/areas", null);
         String me0 = call(hc, base + "/api/me", null);
         String badLogin = call(hc, base + "/api/login", "user=sara&password=nope");
-        String tVera = token(call(hc, base + "/api/login", "user=vera&password=Vera-pass-1"));
         String tOmar = token(call(hc, base + "/api/login", "user=omar&password=Omar-pass-1"));
         String tSara = token(call(hc, base + "/api/login", "user=sara&password=Sara-pass-1"));
         String tAdmin = token(call(hc, base + "/api/login", "user=admin&password=Admin-pass-1"));
-        String vRead = call(hc, base + "/api/areas", null, "Authorization", "Bearer " + tVera);
-        String vWrite = call(hc, base + "/api/occupancy", "area=GATE-B&count=900", "Authorization", "Bearer " + tVera);
+        String oRead = call(hc, base + "/api/areas", null, "Authorization", "Bearer " + tOmar);
         String oWrite = call(hc, base + "/api/occupancy", "area=GATE-B&count=900", "Authorization", "Bearer " + tOmar);
         String oEvac = call(hc, base + "/api/evacuate", "zone=GATE-B", "Authorization", "Bearer " + tOmar);
         String sCheck = call(hc, base + "/api/checkin", "officer=Mallory", "Authorization", "Bearer " + tSara);
@@ -1349,11 +1354,11 @@ public class TestRunner {
         String sUsers = call(hc, base + "/api/users", null, "Authorization", "Bearer " + tSara);
         String aAdd = call(hc, base + "/api/users", "name=nadia&role=OPERATOR&password=Nadia-pass-1", "Authorization", "Bearer " + tAdmin);
         String aList = call(hc, base + "/api/users", null, "Authorization", "Bearer " + tAdmin);
-        check("Server with personal logins: nothing without signing in; a viewer reads but cannot change; an operator enters counts but cannot evacuate; an officer's name is always their own; only an admin manages users",
-            "401, logins on, wrong password 401, 4 tokens, viewer read 200, viewer write 403, operator count 200, operator evacuate 403, check-in 200 as sara (not Mallory), officer users 403, admin adds nadia 200 and sees 5 users",
+        check("Server with personal logins: nothing without signing in; an operator reads and enters counts but cannot evacuate; an officer's name is always their own; only an admin manages users",
+            "401, logins on, wrong password 401, 3 tokens, operator read 200, operator count 200, operator evacuate 403, check-in 200 as sara (not Mallory), officer users 403, admin adds nadia 200 and sees 4 users",
             code(noLogin) + ", " + (me0.contains("\"logins\":true") ? "logins on" : me0) + ", wrong password " + code(badLogin) + ", "
-                + ((tVera != null ? 1 : 0) + (tOmar != null ? 1 : 0) + (tSara != null ? 1 : 0) + (tAdmin != null ? 1 : 0)) + " tokens, viewer read " + code(vRead)
-                + ", viewer write " + code(vWrite) + ", operator count " + code(oWrite) + ", operator evacuate " + code(oEvac) + ", check-in " + code(sCheck) + " as " + officerNow
+                + ((tOmar != null ? 1 : 0) + (tSara != null ? 1 : 0) + (tAdmin != null ? 1 : 0)) + " tokens, operator read " + code(oRead)
+                + ", operator count " + code(oWrite) + ", operator evacuate " + code(oEvac) + ", check-in " + code(sCheck) + " as " + officerNow
                 + (officerNow != null && !officerNow.contains("Mallory") ? " (not Mallory)" : "") + ", officer users " + code(sUsers) + ", admin adds nadia " + code(aAdd)
                 + " and sees " + (aList.split("\"name\"").length - 1) + " users");
 
@@ -1382,16 +1387,16 @@ public class TestRunner {
                 + ", own task on scene " + code(devOwn) + ", control-room data " + code(devAreas) + ", after cancel " + code(devAfter));
 
         String auditJson = call(hc, base + "/api/audit", null, "Authorization", "Bearer " + tSara);
-        String vAudit = call(hc, base + "/api/audit", null, "Authorization", "Bearer " + tVera);
+        String vAudit = call(hc, base + "/api/audit", null, "Authorization", "Bearer " + tOmar);
         String allAudit = String.join("\n", auditRows.toArray(new String[0]));
         trace("audit log (newest 6)", String.join("\n", java.util.Arrays.copyOfRange(allAudit.split("\n"), Math.max(0, auditRows.size() - 6), auditRows.size())));
-        check("Audit log: every login, change and refusal is written with the user and role; passwords are never written; officers read it, viewers cannot",
-            "failed login logged, omar refused evacuate logged, sara checkin logged, device ack logged, no passwords, officer 200, viewer 403",
+        check("Audit log: every login, change and refusal is written with the user and role; passwords are never written; officers read it, operators cannot",
+            "failed login logged, omar refused evacuate logged, sara checkin logged, device ack logged, no passwords, officer 200, operator 403",
             (allAudit.contains("sara (-)") || allAudit.contains("sara (OFFICER)  login  REFUSED") ? "failed login logged" : "failed login missing") + ", "
                 + (allAudit.contains("omar (OPERATOR)  evacuate  REFUSED") ? "omar refused evacuate logged" : "missing") + ", "
                 + (allAudit.contains("sara (OFFICER)  checkin  OK") ? "sara checkin logged" : "missing") + ", "
                 + (allAudit.contains("(DEVICE)  ack  OK") ? "device ack logged" : "missing") + ", "
-                + (allAudit.contains("pass-1") ? "PASSWORD WRITTEN" : "no passwords") + ", officer " + code(auditJson) + ", viewer " + code(vAudit));
+                + (allAudit.contains("pass-1") ? "PASSWORD WRITTEN" : "no passwords") + ", officer " + code(auditJson) + ", operator " + code(vAudit));
         aapi.stop();
 
         if (Database.driverAvailable()) {

@@ -771,7 +771,7 @@ public class FxApp extends Application {
         Button users = button("Users and roles...", "btn", e -> usersDialog());
         Button devices = button("Scout device codes...", "btn", e -> deviceDialog());
         Button audit = button("Audit log...", "btn", e -> auditDialog());
-        Label accNote = new Label("Personal logins: each person signs in with a name and password and gets a role (VIEWER, OPERATOR, OFFICER or ADMIN). "
+        Label accNote = new Label("Personal logins: each person signs in with a name and password and gets a role (OPERATOR, OFFICER or ADMIN). "
             + "Each scout phone can get its own code that only works for its unit. Every change, here or on the network, is written to the audit log.");
         accNote.setWrapText(true);
         accNote.getStyleClass().add("sub");

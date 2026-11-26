@@ -106,7 +106,7 @@
     'Users and access': 'المستخدمون والصلاحيات', 'Users': 'المستخدمون', 'Role': 'الدور', 'Can sign in': 'يمكنه الدخول', 'Save user': 'حفظ المستخدم',
     'Audit log': 'سجل التدقيق', 'Show audit log': 'عرض سجل التدقيق', 'Time': 'الوقت', 'User': 'المستخدم', 'Action': 'الإجراء', 'Result': 'النتيجة',
     'Scout device codes': 'رموز أجهزة الكشافة', 'Issue new code': 'إصدار رمز جديد', 'Cancel code': 'إلغاء الرمز', 'Signed in as': 'مسجّل باسم',
-    'VIEWER': 'مشاهد', 'OPERATOR': 'مشغّل', 'OFFICER': 'ضابط', 'ADMIN': 'مسؤول', 'DESKTOP': 'سطح المكتب', 'DEVICE': 'جهاز', 'SCOUT': 'كشاف',
+    'OPERATOR': 'مشغّل', 'OFFICER': 'ضابط', 'ADMIN': 'مسؤول', 'DESKTOP': 'سطح المكتب', 'DEVICE': 'جهاز', 'SCOUT': 'كشاف',
     'OK': 'تم', 'REFUSED': 'مرفوض', 'empty keeps the current password': 'اتركها فارغة للإبقاء على كلمة المرور الحالية',
     'Each scout phone gets its own code that only works for its unit. A new code cancels the old one.': 'يحصل كل هاتف كشاف على رمز خاص يعمل لوحدته فقط. الرمز الجديد يلغي القديم.',
     'Every change made here or on the network is recorded with the name of the person who made it.': 'يُسجَّل كل تغيير هنا أو عبر الشبكة باسم من قام به.',

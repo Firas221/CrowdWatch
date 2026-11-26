@@ -50,7 +50,7 @@ public class ApiServer {
     private volatile Accounts accounts;
     // the caller when the control key is used (or the server is open): full rights
     private static final Accounts.Who SYSTEM = accountsWho("control key", Accounts.Role.ADMIN, null);
-    // what each role may change (each role also has the rights of the roles below it); GETs need VIEWER
+    // what each role may change (each role also has the rights of the roles below it); every signed-in user may read
     private static final String[] OPERATOR_POSTS = { "POST /api/occupancy", "POST /api/move", "POST /api/incidents", "POST /api/resolve", "POST /api/onscene",
         "POST /api/ack", "POST /api/sos", "POST /api/found", "POST /api/foundperson", "POST /api/reassign", "POST /api/escalate", "POST /api/alarm" };
     private static final String[] ADMIN_ONLY = { "GET /api/users", "POST /api/users" };
@@ -799,7 +799,7 @@ public class ApiServer {
         Accounts.Role need;
         if (in(endpoint, ADMIN_ONLY)) need = Accounts.Role.ADMIN;
         else if (in(endpoint, OFFICER_GETS)) need = Accounts.Role.OFFICER;
-        else if (endpoint.startsWith("GET ")) need = Accounts.Role.VIEWER;
+        else if (endpoint.startsWith("GET ")) need = Accounts.Role.OPERATOR;
         else if (in(endpoint, OPERATOR_POSTS)) need = Accounts.Role.OPERATOR;
         else need = Accounts.Role.OFFICER;
         return who.atLeast(need) ? null : "your role " + who.role + " cannot use " + endpoint + " (needs " + need + ")";
