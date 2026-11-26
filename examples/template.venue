@@ -17,6 +17,11 @@
 # ack:         minutes   time a unit has to acknowledge a task before a reminder; after a second wait it is reassigned (default 2)
 # gateway:     URL       radio or SMS gateway that receives every message sent to units (HTTP POST)
 # archive:     24h|30m   how long resolved incidents stay in memory before moving to the archive tables (24h)
+# retention:   30        days after which the details and contact of archived incidents are erased (0 = keep; default 30)
+# feed:        folder PATH [SECONDS]               read count files that a counting system drops into a folder
+# feed:        poll URL [SECONDS] [TOKEN-VARIABLE] ask a counting system's web address for counts (text or JSON)
+# feed:        tcp PORT [ALLOWED-ADDRESS ...]      take count lines from devices over a network socket
+#              Count lines: AREA,COUNT  or  AREA,+N / AREA,-N  or  move,FROM,TO,COUNT  (OUTSIDE = off the site)
 #
 # Further automation (all optional; the value in brackets is used when the line is missing):
 # stale:       minutes   a sensor silent this long marks its area's data stale and asks a unit to count (5)
@@ -75,6 +80,7 @@ link: ATRIUM PARK 4 150 stairs
 # map:      FILE WIDTH HEIGHT   a PNG or JPG next to this file (shown in the consoles under the live areas)
 # scale:    metres per map unit (needed for "auto" link times; walking speed 60 m/min)
 # pos:      AREA x y width height
+# shape:    AREA x1 y1 x2 y2 x3 y3 ...   an outline for an area that is not a rectangle (replaces its pos)
 # exitflow: EXIT people-per-minute   lets the evacuation plan spread people over the exits and estimate the time to clear
 # zone:     NAME | AREA AREA ...   fire zones: an alarm proposes evacuating its zone; the console can evacuate one
 # lifts are never used in an evacuation plan

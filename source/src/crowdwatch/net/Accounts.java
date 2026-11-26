@@ -38,8 +38,12 @@ import crowdwatch.ds.LinkedList;
  * {@link #AUDIT_KEPT} entries are kept in memory for the console; every entry also goes to the
  * {@link Sink} (the venue's database and a daily text file) so the trail survives a restart.
  * <p>
- * Users and device codes are saved in a small text file (hashes only) that is replaced
- * atomically, so a crash during a save never leaves a half-written file.
+ * Users, device codes and open sessions are saved in a small text file (password hashes and the
+ * SHA-256 of each session token only), readable by its owner only, that is replaced atomically, so a
+ * crash during a save never leaves a half-written file and users stay signed in after a restart.
+ * <p>
+ * <b>Two-step sign-in.</b> A user can add CrowdWatch to an authenticator app; from then on a
+ * sign-in needs the app's 6-digit code as well as the password ({@link Totp}, RFC 6238).
  */
 public class Accounts {
     /** Roles, lowest first. */
@@ -64,8 +68,12 @@ public class Accounts {
         public Role role;
         public boolean active = true;
         String salt, hash;
+        // two-step sign-in: Base32 secret of the authenticator app (null = off), and one being set up
+        String totp, pendingTotp;
         int failures;
         LocalDateTime lockedUntil;
+        /** @return true if this user signs in with a code from an authenticator app as well */
+        public boolean twoStep() { return totp != null; }
         User(String name, Role role) { this.name = name; this.role = role; }
     }
 
@@ -180,32 +188,128 @@ public class Accounts {
         return n;
     }
 
+    /** Why a sign-in was refused, or the new session. */
+    public static final class Login {
+        /** The session token, or null if refused. */
+        public final String token;
+        /** True if the password was right but the authenticator code is missing or wrong. */
+        public final boolean needCode;
+        Login(String token, boolean needCode) { this.token = token; this.needCode = needCode; }
+    }
+
     /**
      * Checks a password and opens a session.
      *
      * @return the session token, or null if the name or password is wrong, the user is switched
      *         off or the name is locked (the reason is in the audit log)
      */
-    public synchronized String login(String name, String password, LocalDateTime now) {
+    public String login(String name, String password, LocalDateTime now) { return login(name, password, null, now).token; }
+
+    /**
+     * Checks a password and, for users with two-step sign-in, the 6-digit code of their
+     * authenticator app, and opens a session. A wrong code counts as a wrong password.
+     */
+    public synchronized Login login(String name, String password, String code, LocalDateTime now) {
+        Login c = check(name, password, code, now, "login");
+        if (c.token == null) return c;
         User u = user(name);
-        if (u == null || !u.active || u.hash == null) { record(now, name == null ? "?" : name, "-", "login", "unknown or switched-off user", false); return null; }
-        if (u.lockedUntil != null && now.isBefore(u.lockedUntil)) { record(now, u.name, u.role.name(), "login", "locked after " + MAX_FAILURES + " wrong passwords", false); return null; }
+        String token = token();
+        sessions.insert(tokenKey(token), new Session(u.name, now.plusHours(SESSION_HOURS)));
+        record(now, u.name, u.role.name(), "login", u.totp != null ? "signed in (two-step)" : "signed in", true);
+        saveQuietly();   // the session survives a restart of the server
+        return new Login(token, false);
+    }
+
+    /**
+     * Checks a user's password (and code) without opening a session: for a desktop window and for
+     * an officer approving something at an operator's desk. Wrong answers count towards the lock.
+     *
+     * @return the user, or null if refused (the reason is in the audit log)
+     */
+    public synchronized Who verify(String name, String password, String code, LocalDateTime now, String action) {
+        Login c = check(name, password, code, now, action);
+        if (c.token == null) return null;
+        User u = user(name);
+        record(now, u.name, u.role.name(), action, "password checked", true);
+        return new Who(u.name, u.role, null);
+    }
+
+    /** @return {@link Login} with a non-null token placeholder if the password and code are right */
+    private Login check(String name, String password, String code, LocalDateTime now, String action) {
+        User u = user(name);
+        if (u == null || !u.active || u.hash == null) { record(now, name == null ? "?" : name, "-", action, "unknown or switched-off user", false); return new Login(null, false); }
+        if (u.lockedUntil != null && now.isBefore(u.lockedUntil)) { record(now, u.name, u.role.name(), action, "locked after " + MAX_FAILURES + " wrong passwords", false); return new Login(null, false); }
         if (password == null || !slowEquals(hash(password, u.salt), u.hash)) {
-            u.failures++;
-            if (u.failures >= MAX_FAILURES) { u.lockedUntil = now.plusMinutes(LOCK_MINUTES); u.failures = 0; }
-            record(now, u.name, u.role.name(), "login", "wrong password", false);
-            return null;
+            fail(u, now, "wrong password", action);
+            return new Login(null, false);
+        }
+        if (u.totp != null) {
+            if (code == null || code.isBlank()) { record(now, u.name, u.role.name(), action, "password right, code from the authenticator app needed", false); return new Login(null, true); }
+            if (!Totp.verify(u.totp, code, now)) { fail(u, now, "wrong authenticator code", action); return new Login(null, true); }
         }
         u.failures = 0;
         u.lockedUntil = null;
-        String token = token();
-        sessions.insert(token, new Session(u.name, now.plusHours(SESSION_HOURS)));
-        record(now, u.name, u.role.name(), "login", "signed in", true);
-        return token;
+        return new Login("ok", false);
+    }
+
+    private void fail(User u, LocalDateTime now, String why, String action) {
+        u.failures++;
+        if (u.failures >= MAX_FAILURES) { u.lockedUntil = now.plusMinutes(LOCK_MINUTES); u.failures = 0; }
+        record(now, u.name, u.role.name(), action, why, false);
+    }
+
+    /**
+     * Starts setting up two-step sign-in for a user: makes a new secret that the user adds to an
+     * authenticator app (Google Authenticator, Microsoft Authenticator, Aegis ...). It is used only
+     * after {@link #confirmTwoStep} with a code from the app, so a mistake cannot lock anyone out.
+     *
+     * @return the secret in Base32, or null if there is no such user
+     */
+    public synchronized String startTwoStep(String name) {
+        User u = user(name);
+        if (u == null) return null;
+        u.pendingTotp = Totp.newSecret(random);
+        return u.pendingTotp;
+    }
+
+    /** @return the otpauth:// link for an authenticator app (it can be opened on the phone) */
+    public static String twoStepLink(String name, String secret) {
+        return "otpauth://totp/CrowdWatch:" + java.net.URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20")
+            + "?secret=" + secret + "&issuer=CrowdWatch&digits=6&period=30";
+    }
+
+    /** Switches two-step sign-in on with the code the app shows. @return null if done, otherwise why not */
+    public synchronized String confirmTwoStep(String name, String code, LocalDateTime now) {
+        User u = user(name);
+        if (u == null) return "no user " + name;
+        if (u.pendingTotp == null) return "start the set-up first";
+        if (!Totp.verify(u.pendingTotp, code, now)) return "the code does not match: check the phone's clock and try the newest code";
+        u.totp = u.pendingTotp;
+        u.pendingTotp = null;
+        return saveQuietly();
+    }
+
+    /** Switches two-step sign-in off for a user (by an administrator, or the user with a current code). */
+    public synchronized String stopTwoStep(String name) {
+        User u = user(name);
+        if (u == null) return "no user " + name;
+        u.totp = null;
+        u.pendingTotp = null;
+        return saveQuietly();
     }
 
     /** Ends one session (sign out). */
-    public synchronized void logout(String token) { if (token != null) sessions.delete(token); }
+    public synchronized void logout(String token) { if (token != null && sessions.delete(tokenKey(token))) saveQuietly(); }
+
+    // sessions are kept by the SHA-256 of their token, so the accounts file never holds a usable token
+    private static String tokenKey(String token) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
+    }
 
     private void endSessions(String name) {
         for (String t : sessions.keysInOrder()) if (sessions.search(t).user.equalsIgnoreCase(name)) sessions.delete(t);
@@ -217,11 +321,12 @@ public class Accounts {
      */
     public synchronized Who session(String token, LocalDateTime now) {
         if (token == null) return null;
-        Session s = sessions.search(token);
+        String k = tokenKey(token);
+        Session s = sessions.search(k);
         if (s == null) return null;
-        if (now.isAfter(s.expires)) { sessions.delete(token); return null; }
+        if (now.isAfter(s.expires)) { sessions.delete(k); return null; }
         User u = user(s.user);
-        if (u == null || !u.active) { sessions.delete(token); return null; }
+        if (u == null || !u.active) { sessions.delete(k); return null; }
         return new Who(u.name, u.role, null);
     }
 
@@ -308,13 +413,14 @@ public class Accounts {
 
     /*
      * File format, one record a line, fields separated by '|':
-     *   user|name|ROLE|active(1/0)|salt|hash
+     *   user|name|ROLE|active(1/0)|salt|hash[|two-step secret]
      *   device|CODE|unit
+     *   session|SHA-256 of the token|user|expiry   (signed-in users stay signed in after a restart)
      */
     private void load() throws IOException {
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             String[] f = line.split("\\|", -1);
-            if (f.length == 6 && f[0].equals("user")) {
+            if ((f.length == 6 || f.length == 7) && f[0].equals("user")) {
                 // the VIEWER role of earlier versions was removed: such a user is kept, but switched off
                 // until an administrator gives them a role, so nobody gains rights by the upgrade
                 boolean oldViewer = f[2].equals("VIEWER");
@@ -322,9 +428,12 @@ public class Accounts {
                 u.active = f[3].equals("1") && !oldViewer;
                 u.salt = f[4];
                 u.hash = f[5];
+                if (f.length == 7 && !f[6].isEmpty()) u.totp = f[6];
                 users.insert(key(f[1]), u);
             } else if (f.length == 3 && f[0].equals("device")) {
                 devices.insert(f[1], f[2]);
+            } else if (f.length == 4 && f[0].equals("session")) {
+                try { sessions.insert(f[1], new Session(f[2], LocalDateTime.parse(f[3]))); } catch (java.time.format.DateTimeParseException ignored) { }
             }
         }
     }
@@ -333,13 +442,31 @@ public class Accounts {
     public synchronized void save() throws IOException {
         if (file == null) return;
         StringBuilder sb = new StringBuilder("# CrowdWatch accounts: password hashes only (PBKDF2-SHA256). Do not edit by hand.\n");
-        for (User u : users.inOrder()) sb.append("user|").append(u.name).append('|').append(u.role).append('|').append(u.active ? 1 : 0).append('|').append(u.salt).append('|').append(u.hash).append('\n');
+        for (User u : users.inOrder()) sb.append("user|").append(u.name).append('|').append(u.role).append('|').append(u.active ? 1 : 0).append('|').append(u.salt).append('|').append(u.hash).append(u.totp == null ? "" : "|" + u.totp).append('\n');
         for (String c : devices.keysInOrder()) sb.append("device|").append(c).append('|').append(devices.search(c)).append('\n');
+        LocalDateTime now = LocalDateTime.now();
+        for (String k : sessions.keysInOrder()) {
+            Session ss = sessions.search(k);
+            if (ss.expires.isAfter(now.minusDays(1))) sb.append("session|").append(k).append('|').append(ss.user).append('|').append(ss.expires).append('\n');
+        }
         if (file.getParent() != null) Files.createDirectories(file.getParent());
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
         Files.writeString(tmp, sb.toString(), StandardCharsets.UTF_8);
+        ownerOnly(tmp);
         try { Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
         catch (java.nio.file.AtomicMoveNotSupportedException e) { Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING); }
+    }
+
+    // the accounts file is readable by its owner only
+    static void ownerOnly(Path f) { ownerOnlyFile(f); }
+
+    /** Makes a file readable and writable by its owner only, where the file system supports it. */
+    public static void ownerOnlyFile(Path f) {
+        try { Files.setPosixFilePermissions(f, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")); }
+        catch (UnsupportedOperationException | IOException e) {
+            java.io.File x = f.toFile();
+            x.setReadable(false, false); x.setReadable(true, true); x.setWritable(false, false); x.setWritable(true, true);
+        }
     }
 
     private String saveQuietly() {

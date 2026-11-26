@@ -67,6 +67,20 @@ public class LinkedList<T> implements Iterable<T> {
     public T getLast() { if (tail == null) throw new NoSuchElementException(); return tail.value; }
 
     /**
+     * Removes and returns the first item. O(1). Used to keep logs to a fixed length.
+     *
+     * @throws NoSuchElementException if the list is empty
+     */
+    public T removeFirst() {
+        if (head == null) throw new NoSuchElementException();
+        T v = head.value;
+        head = head.next;
+        if (head == null) tail = null;
+        size--;
+        return v;
+    }
+
+    /**
      * Removes and returns the last item. O(n), because a singly linked list has to walk
      * to the node before the tail. Used to drop the oldest alert when the list is full.
      *

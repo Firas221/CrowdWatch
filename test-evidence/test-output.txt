@@ -1,4 +1,4 @@
-Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40901 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=46359 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
 Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock
 CROWDWATCH - TEST EVIDENCE AND TRACES
 =====================================
@@ -261,7 +261,7 @@ TC-38  Derby save then load restores venue, units, incidents, queues and history
   Result:   PASS
 
   Trace - save of a busy day:
-    alerts kept 1000, save took 859 ms, longest sensor wait during the save 26 ms
+    alerts kept 1000, save took 999 ms, longest sensor wait during the save 28 ms
 TC-39  Saving a busy day does not stop the sensors (monitor locked only to copy the data)
   Expected: alerts kept 1000, longest sensor wait under 300 ms
   Actual:   alerts kept 1000, longest sensor wait under 300 ms
@@ -663,7 +663,7 @@ TC-103  Umrah layout: walking times come from the drawing (1 unit = 1 m, 60 m a 
   Result:   PASS
 
   Trace - hall plan:
-    [[Ljava.lang.String;@a479c0c -> [Ljava.lang.String;@33d75081 -> [Ljava.lang.String;@327af731 -> [Ljava.lang.String;@2fb171f5 -> [Ljava.lang.String;@19203ff3]
+    [[Ljava.lang.String;@2420e962 -> [Ljava.lang.String;@1fc51af7 -> [Ljava.lang.String;@66df2165 -> [Ljava.lang.String;@41cec7b0 -> [Ljava.lang.String;@62065d12]
 TC-104  Evacuation with exit flows: 6,000 people split over both exits (all through the near door would take 7 min); the lift is never used (the upper floor walks 4 min down the stairs and queues behind 3,000 at the near door: clear in 8 min); fire zone by name
   Expected: 3000 to NEAR, 3000 to FAR, zone clear in 8 min, upper floor via [UPPER -> HALL -> NEAR]
   Actual:   3000 to NEAR, 3000 to FAR, zone clear in 8 min, upper floor via [UPPER -> HALL -> NEAR]
@@ -746,5 +746,52 @@ TC-117  Arabic screens: the language file is served without a key and switches t
   Actual:   i18n.js 200, rtl, Arabic text, console loads it, scout loads it, both have the button
   Result:   PASS
 
+PART N - TWO-STEP SIGN-IN, SAVED SESSIONS, DESKTOP APPROVAL, ENCRYPTION, SENSOR FEEDS, SHAPES
+
+TC-118  Two-step sign-in: codes as in RFC 6238; switched on only after a right code from the app; then a sign-in needs the password and the current code
+  Expected: RFC code 287082, wrong set-up code refused, on, no code: asked, wrong code: refused, right code: signed in
+  Actual:   RFC code 287082, wrong set-up code refused, on, no code: asked, wrong code: refused, right code: signed in
+  Result:   PASS
+
+TC-119  Saved sessions: a sign-in survives a restart of the server, signing out ends it for good; the file holds only a hash of the token and only its owner can read it
+  Expected: after restart: sara, after sign-out: none, token not in file, rw-------
+  Actual:   after restart: sara, after sign-out: none, token not in file, rw-------
+  Result:   PASS
+
+TC-120  Server: a user with two-step sign-in is asked for the code; the plain dashboard has its own sign-in page and then works with an HttpOnly, SameSite cookie
+  Expected: 401 needCode, 200 with code, classic sign-in page, cookie HttpOnly SameSite=Strict, classic 200 with Sign out, API 200 with the cookie
+  Actual:   401 needCode, 200 with code, classic sign-in page, cookie HttpOnly SameSite=Strict, classic 200 with Sign out, API 200 with the cookie
+  Result:   PASS
+
+TC-121  Desktop sign-in checks the password without opening a session; entering a restricted area needs an approver, whose name is kept in the unit's history
+  Expected: omar OPERATOR, wrong password refused, no approver refused, approved by sara (in history)
+  Actual:   omar OPERATOR, wrong password refused, no approver refused, approved by sara (in history)
+  Result:   PASS
+
+TC-122  Personal data encrypted in the database (AES-256-GCM, key file made once, owner only); read back as it was; the daily backup is also copied to a second folder
+  Expected: details and contact stored encrypted, no plain text, read back, key file made, backup copied
+  Actual:   details and contact stored encrypted, no plain text, read back, key file made, backup copied
+  Result:   PASS
+
+TC-123  Retention: archived incidents keep their personal data encrypted for 30 days (retention: line), then details and contact are erased; the rest of the record stays
+  Expected: after 1 day: kept encrypted, after 31 days: erased (category MEDICAL kept)
+  Actual:   after 1 day: kept encrypted, after 31 days: erased (category MEDICAL kept)
+  Result:   PASS
+
+TC-124  Count lines and the folder feed: counts, +/- changes and moves are applied, bad lines are listed; files are read once and moved to done/ or failed/
+  Expected: 3 applied, GATE-A 102, 2 problems; GATE-B 700, CHECKIN-1 250, done/counts-0900.csv, failed/junk.csv
+  Actual:   3 applied, GATE-A 102, 2 problems; GATE-B 700, CHECKIN-1 250, done/counts-0900.csv, failed/junk.csv
+  Result:   PASS
+
+TC-125  Polling a counting system (JSON with a bearer token from an environment variable) and a TCP feed for devices: OK or ERR per line, unknown addresses refused
+  Expected: GATE-C 321, SEC-2 44, token sent, TCP: OK / ERR, ARRIVALS-1 80, other address closed
+  Actual:   GATE-C 321, SEC-2 44, token sent, TCP: OK / ERR, ARRIVALS-1 80, other address closed
+  Result:   PASS
+
+TC-126  Venue lines: feed: and retention: are read, an unknown feed is refused; shape: gives an area an outline (the Mataf is an octagon) whose box is its position
+  Expected: 2 feeds, retention 7, unknown feed refused, MATAF 8 points, box 397 367 206 206, layout has the shape
+  Actual:   2 feeds, retention 7, unknown feed refused, MATAF 8 points, box 397 367 206 206, layout has the shape
+  Result:   PASS
+
 =====================================
-TOTAL: 117 passed, 0 failed
+TOTAL: 126 passed, 0 failed

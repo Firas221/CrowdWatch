@@ -41,6 +41,26 @@ public class Database {
 
     // the database folder
     private final File folder;
+    // encrypts incident details and contacts; made on first use
+    private FieldCipher cipher;
+
+    /** @return the cipher for personal fields (key from CROWDWATCH_DATA_KEY or crowdwatch-data/data.key) */
+    private synchronized FieldCipher cipher() {
+        if (cipher == null) {
+            try { cipher = FieldCipher.open(new File(folder.getParentFile(), "data.key").toPath()); }
+            catch (java.io.IOException e) { throw new IllegalStateException("the data key cannot be read or made: " + e.getMessage(), e); }
+        }
+        return cipher;
+    }
+
+    /** @return the key file used for this database's personal fields (unless CROWDWATCH_DATA_KEY is set) */
+    public File keyFile() { return new File(folder.getParentFile(), "data.key"); }
+
+    // encrypts columns 5 and 6 (details, contact) of incident rows
+    private void encryptRows(LinkedList<Object[]> rows) {
+        FieldCipher c = cipher();
+        for (Object[] r : rows) { r[4] = c.encrypt((String) r[4]); r[5] = c.encrypt((String) r[5]); }
+    }
 
     /**
      * Turns a venue code into a safe folder name: lower case, letters, digits, _ and - only.
@@ -129,7 +149,10 @@ public class Database {
             "ALTER TABLE incident_archive ADD COLUMN found_at TIMESTAMP", "ALTER TABLE incident_archive ADD COLUMN found_where VARCHAR(40)", "ALTER TABLE incident_archive ADD COLUMN found_by VARCHAR(40)",
             "ALTER TABLE incident_archive ADD COLUMN search_min INT", "ALTER TABLE incident_archive ADD COLUMN lost_steps INT", "ALTER TABLE incident_archive ADD COLUMN follow_ups INT", "ALTER TABLE incident_archive ADD COLUMN wait_handled INT",
             // audit log of the network server: written one row at a time, never deleted by a save
-            "CREATE TABLE audit (happened_at TIMESTAMP, username VARCHAR(40), role VARCHAR(12), action VARCHAR(40), summary VARCHAR(400), ok INT)" };
+            "CREATE TABLE audit (happened_at TIMESTAMP, username VARCHAR(40), role VARCHAR(12), action VARCHAR(40), summary VARCHAR(400), ok INT)",
+            // personal fields are stored encrypted (longer than the text itself)
+            "ALTER TABLE incidents ALTER COLUMN details SET DATA TYPE VARCHAR(1200)", "ALTER TABLE incidents ALTER COLUMN contact SET DATA TYPE VARCHAR(400)",
+            "ALTER TABLE incident_archive ALTER COLUMN details SET DATA TYPE VARCHAR(1200)", "ALTER TABLE incident_archive ALTER COLUMN contact SET DATA TYPE VARCHAR(400)" };
         try (Statement s = c.createStatement()) {
             for (String sql : steps) {
                 try { s.executeUpdate(sql); }
@@ -227,15 +250,58 @@ public class Database {
                 cs.execute();
             }
             lastBackup = today;
-            File[] old = dir.getParentFile().listFiles(File::isDirectory);
-            if (old != null && old.length > BACKUP_DAYS) {
-                java.util.Arrays.sort(old);
-                for (int k = 0; k < old.length - BACKUP_DAYS; k++) deleteTree(old[k]);
+            prune(dir.getParentFile());
+            File copy = backupCopyFolder();
+            if (copy != null) {
+                // a second copy on another disk or a network folder, so losing this computer does not lose the backups
+                File to = new File(copy, folderName + File.separator + today);
+                try {
+                    copyTree(dir.toPath(), to.toPath());
+                    prune(to.getParentFile());
+                    lastCopy = to.getPath();
+                } catch (java.io.IOException e) {
+                    lastCopy = "FAILED: " + e.getMessage();
+                }
             }
             return dir.getPath();
         } catch (SQLException | RuntimeException e) {
             lastBackup = today;   // try again tomorrow, not on every save
             return null;
+        }
+    }
+
+    /** System property and environment variable naming a second folder for the daily backups. */
+    public static final String COPY_PROPERTY = "crowdwatch.backupCopy", COPY_VARIABLE = "CROWDWATCH_BACKUP_COPY";
+    // where the last backup was copied, or why it failed; null if no copy folder is set
+    private volatile String lastCopy;
+
+    /** @return where the newest backup was copied to (or "FAILED: reason"), null if no second folder is set */
+    public String lastBackupCopy() { return lastCopy; }
+
+    /** @return the second backup folder (another drive or a network share), or null if none is set */
+    public static File backupCopyFolder() {
+        String v = System.getProperty(COPY_PROPERTY);
+        if (v == null || v.isBlank()) v = System.getenv(COPY_VARIABLE);
+        return v == null || v.isBlank() ? null : new File(v);
+    }
+
+    // keeps the newest BACKUP_DAYS dated folders in a backup folder
+    private static void prune(File parent) {
+        File[] old = parent.listFiles(File::isDirectory);
+        if (old != null && old.length > BACKUP_DAYS) {
+            java.util.Arrays.sort(old);
+            for (int k = 0; k < old.length - BACKUP_DAYS; k++) deleteTree(old[k]);
+        }
+    }
+
+    // copies a folder with everything in it
+    private static void copyTree(java.nio.file.Path from, java.nio.file.Path to) throws java.io.IOException {
+        try (java.util.stream.Stream<java.nio.file.Path> all = java.nio.file.Files.walk(from)) {
+            for (java.nio.file.Path p : (Iterable<java.nio.file.Path>) all::iterator) {
+                java.nio.file.Path t = to.resolve(from.relativize(p).toString());
+                if (java.nio.file.Files.isDirectory(p)) java.nio.file.Files.createDirectories(t);
+                else java.nio.file.Files.copy(p, t, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
         }
     }
 
@@ -250,6 +316,8 @@ public class Database {
     private void write(Snapshot s) throws SQLException {
         if (!safeName(s.code).equals(folderName))
             throw new IllegalStateException("Venue '" + s.code + "' does not belong to database '" + folderName + "'; not saved.");
+        encryptRows(s.incidents);
+        encryptRows(s.archiveRows);
         try (Connection c = open()) {
             schema(c);
             c.setAutoCommit(false);
@@ -266,6 +334,11 @@ public class Database {
                 insert(c, "INSERT INTO state VALUES (?,?,?)", s.state);
                 insert(c, "INSERT INTO incident_archive VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", s.archiveRows);
                 insert(c, "INSERT INTO history_archive VALUES (?,?,?,?,?)", s.archiveHistory);
+                if (s.retentionDays > 0) try (PreparedStatement ps = c.prepareStatement(
+                        "UPDATE incident_archive SET details = NULL, contact = NULL WHERE resolved < ? AND (details IS NOT NULL OR contact IS NOT NULL)")) {
+                    ps.setTimestamp(1, Timestamp.valueOf(s.now.minusDays(s.retentionDays)));
+                    s.erased = ps.executeUpdate();
+                }
                 c.commit();
             } catch (SQLException | RuntimeException e) {
                 c.rollback();
@@ -287,10 +360,17 @@ public class Database {
             archiveRows = new LinkedList<>(), archiveHistory = new LinkedList<>();
         // incidents taken from the monitor's archive queue by this snapshot
         final LinkedList<Incident> archived;
+        // personal data of archived incidents older than this many days is erased (0 = keep)
+        final int retentionDays;
+        final LocalDateTime now;
+        // archived incidents whose personal data the last save erased
+        int erased;
 
         // the caller holds the monitor's lock
         Snapshot(CrowdMonitor m) {
             code = m.venue().code;
+            retentionDays = m.venue().retentionDays;
+            now = m.now();
             venue.addLast(new Object[] { 1, fit(m.venue().code, 40), fit(m.venue().name, 120), m.venue().text });
             for (Area a : m.areaTree().inOrder())
                 areas.addLast(new Object[] { fit(a.id, 40), a.occupancy, a.level.name(), a.source == null ? null : a.source.name(), ts(a.updated), a.evacuating ? 1 : 0, a.autoIncident });
@@ -420,7 +500,7 @@ public class Database {
                 try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery("SELECT * FROM incidents ORDER BY queue_pos, reported")) {
                     while (rs.next()) {
                         Incident i = new Incident(rs.getInt("id"), m.findCategory(rs.getString("category")), Priority.valueOf(rs.getString("priority")),
-                            m.findArea(rs.getString("area")), rs.getString("details"), rs.getString("contact"), rs.getString("language"), dt(rs.getTimestamp("reported")));
+                            m.findArea(rs.getString("area")), cipher().decrypt(rs.getString("details")), cipher().decrypt(rs.getString("contact")), rs.getString("language"), dt(rs.getTimestamp("reported")));
                         i.status = IncidentStatus.valueOf(rs.getString("status"));
                         i.unitId = rs.getString("unit_id");
                         i.onScene = dt(rs.getTimestamp("on_scene"));

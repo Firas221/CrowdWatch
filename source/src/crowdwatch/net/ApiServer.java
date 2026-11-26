@@ -51,7 +51,7 @@ public class ApiServer {
     // the caller when the control key is used (or the server is open): full rights
     private static final Accounts.Who SYSTEM = accountsWho("control key", Accounts.Role.ADMIN, null);
     // what each role may change (each role also has the rights of the roles below it); every signed-in user may read
-    private static final String[] OPERATOR_POSTS = { "POST /api/occupancy", "POST /api/move", "POST /api/incidents", "POST /api/resolve", "POST /api/onscene",
+    private static final String[] OPERATOR_POSTS = { "POST /api/twostep/start", "POST /api/twostep/confirm", "POST /api/twostep/off", "POST /api/occupancy", "POST /api/move", "POST /api/incidents", "POST /api/resolve", "POST /api/onscene",
         "POST /api/ack", "POST /api/sos", "POST /api/found", "POST /api/foundperson", "POST /api/reassign", "POST /api/escalate", "POST /api/alarm" };
     private static final String[] ADMIN_ONLY = { "GET /api/users", "POST /api/users" };
     private static final String[] OFFICER_GETS = { "GET /api/audit" };
@@ -69,7 +69,7 @@ public class ApiServer {
     public static final int RATE_LIMIT = Integer.getInteger("crowdwatch.rateLimit", 50);
     // pages that hold no data and may be loaded without a key
     private static final String[] PUBLIC = { "GET /", "GET /console", "GET /console.css", "GET /console.js", "GET /i18n.js", "GET /classic", "GET /scout", "GET /health",
-        "POST /api/login", "GET /api/me", "POST /api/logout" };
+        "POST /api/login", "GET /api/me", "POST /api/logout", "POST /classic/login", "POST /classic/logout" };
     // the venue drawing: needs a key (it shows the building), sent as an image
     // what a scout device may do with the scout key
     private static final String[] SCOUT = { "GET /api/unit", "POST /api/ack", "POST /api/onscene", "POST /api/resolve", "POST /api/sos", "POST /api/found", "POST /api/foundperson",
@@ -212,7 +212,9 @@ public class ApiServer {
                 }
             }
             if (endpoint.equals("POST /api/logout")) { if (acc != null) acc.logout(bearer(ex)); send(ex, 200, type, "{\"ok\":true,\"message\":\"signed out\"}"); return; }
-            if (path.startsWith("/api/users") || path.startsWith("/api/devices") || endpoint.equals("GET /api/audit")) {
+            if (endpoint.equals("POST /classic/login") || endpoint.equals("POST /classic/logout")) { classicSign(ex, acc, endpoint, q); return; }
+            if (endpoint.equals("GET /classic") && who == null && acc != null && acc.hasUsers()) { send(ex, 200, "text/html; charset=utf-8", Dashboard.loginPage(q.search("msg"))); return; }
+            if (path.startsWith("/api/users") || path.startsWith("/api/devices") || path.startsWith("/api/twostep") || endpoint.equals("GET /api/audit")) {
                 if (acc == null) { send(ex, 404, type, err("personal logins are not switched on for this server")); return; }
                 String[] reply = accountsEndpoint(acc, who, endpoint, q);
                 send(ex, Integer.parseInt(reply[0]), type, reply[1]);
@@ -246,7 +248,7 @@ public class ApiServer {
                     case "GET /console.css" -> { code = 200; type = "text/css; charset=utf-8"; body = resource("console.css"); }
                     case "GET /console.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("console.js"); }
                     case "GET /i18n.js" -> { code = 200; type = "application/javascript; charset=utf-8"; body = resource("i18n.js"); }
-                    case "GET /classic" -> { code = 200; type = "text/html; charset=utf-8"; body = Dashboard.page(m, apiKey != null); }
+                    case "GET /classic" -> { code = 200; type = "text/html; charset=utf-8"; body = Dashboard.page(m, apiKey != null && (who == null || who == SYSTEM), who != null && who != SYSTEM); }
                     case "GET /api/overview" -> { code = 200; body = overview(); }
                     case "GET /api/units" -> { code = 200; body = units(); }
                     case "GET /api/incident" -> { code = 200; body = incident(num(q.search("id"))); }
@@ -522,7 +524,8 @@ public class ApiServer {
         for (String[] p : v.positions) {
             Area a = m.findArea(p[0]);
             if (a == null) continue;
-            sb.append(k++ > 0 ? "," : "").append("{\"id\":").append(str(a.id)).append(",\"x\":").append(p[1]).append(",\"y\":").append(p[2]).append(",\"w\":").append(p[3]).append(",\"h\":").append(p[4])
+            String shape = v.shapeOf(a.id);
+            sb.append(k++ > 0 ? "," : "").append("{\"id\":").append(str(a.id)).append(shape == null ? "" : ",\"shape\":[" + shape.trim().replace(' ', ',') + "]").append(",\"x\":").append(p[1]).append(",\"y\":").append(p[2]).append(",\"w\":").append(p[3]).append(",\"h\":").append(p[4])
               .append(",\"level\":").append(str(a.level.name())).append(",\"pct\":").append(a.percent()).append(",\"restricted\":").append(a.restricted).append(",\"evacuating\":").append(a.evacuating)
               .append(",\"exit\":").append(v.exits.contains(a.id)).append(",\"flow\":").append(m.exitFlow(a.id)).append(",\"zone\":").append(str(m.fireZoneOf(a.id))).append('}');
         }
@@ -758,10 +761,44 @@ public class ApiServer {
         return a != null && a.regionMatches(true, 0, "Bearer ", 0, 7) ? a.substring(7).trim() : null;
     }
 
+    // name of the session cookie of the plain dashboard
+    static final String COOKIE = "cw_session";
+
+    /** @return the value of a cookie, or null */
+    private static String cookie(HttpExchange ex, String name) {
+        for (String h : ex.getRequestHeaders().getOrDefault("Cookie", java.util.List.of()))
+            for (String part : h.split(";")) {
+                String t = part.trim();
+                if (t.startsWith(name + "=")) return t.substring(name.length() + 1);
+            }
+        return null;
+    }
+
+    /**
+     * Sign-in and sign-out of the plain dashboard (no JavaScript needed): a form post that sets or
+     * clears an HttpOnly, SameSite=Strict session cookie (Secure with HTTPS) and goes back to /classic.
+     */
+    private void classicSign(HttpExchange ex, Accounts acc, String endpoint, AVLTree<String, String> q) throws IOException {
+        String flags = "; Path=/; HttpOnly; SameSite=Strict" + (ex instanceof com.sun.net.httpserver.HttpsExchange ? "; Secure" : "");
+        String back = "/classic";
+        if (endpoint.equals("POST /classic/logout")) {
+            if (acc != null) acc.logout(cookie(ex, COOKIE));
+            ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=; Max-Age=0" + flags);
+        } else if (acc != null) {
+            Accounts.Login in = acc.login(q.search("user"), q.search("password"), q.search("code"), m.now());
+            if (in.token != null) ex.getResponseHeaders().add("Set-Cookie", COOKIE + "=" + in.token + "; Max-Age=" + Accounts.SESSION_HOURS * 3600 + flags);
+            else back = "/classic?msg=" + java.net.URLEncoder.encode(in.needCode ? "Enter the code from your authenticator app" : "Wrong user name or password, or the account is locked", StandardCharsets.UTF_8);
+        }
+        ex.getResponseHeaders().add("Location", back);
+        send(ex, 303, "text/plain", "");
+    }
+
     /** @return who is calling: a signed-in user, a scout device code, the scout key, or null */
     private Accounts.Who identify(Accounts acc, HttpExchange ex, String given) {
         if (acc != null) {
             Accounts.Who w = acc.session(bearer(ex), m.now());
+            if (w != null) return w;
+            w = acc.session(cookie(ex, COOKIE), m.now());   // the plain dashboard signs in with a cookie
             if (w != null) return w;
             w = acc.device(given);
             if (w != null) return w;
@@ -822,7 +859,9 @@ public class ApiServer {
     private void login(HttpExchange ex, Accounts acc, AVLTree<String, String> q) throws IOException {
         String type = "application/json";
         if (acc == null || !acc.hasUsers()) { send(ex, 404, type, err("personal logins are not switched on for this server")); return; }
-        String token = acc.login(q.search("user"), q.search("password"), m.now());
+        Accounts.Login in = acc.login(q.search("user"), q.search("password"), q.search("code"), m.now());
+        if (in.needCode) { send(ex, 401, type, "{\"ok\":false,\"needCode\":true,\"message\":" + str(q.search("code") == null ? "enter the 6-digit code from your authenticator app" : "wrong code from the authenticator app") + "}"); return; }
+        String token = in.token;
         if (token == null) { send(ex, 401, type, err("wrong user name or password, or the account is locked or switched off")); return; }
         Accounts.Who w = acc.session(token, m.now());
         send(ex, 200, type, "{\"ok\":true,\"token\":" + str(token) + ",\"name\":" + str(w.name) + ",\"role\":" + str(w.role.name())
@@ -835,7 +874,7 @@ public class ApiServer {
         if (who == null) return "{\"signedIn\":false,\"logins\":" + logins + ",\"keyRequired\":" + (apiKey != null) + "}";
         String role = who.role != null ? who.role.name() : who.unit != null ? "DEVICE" : "SCOUT";
         return "{\"signedIn\":true,\"logins\":" + logins + ",\"name\":" + str(who.name) + ",\"role\":" + str(role) + ",\"unit\":" + str(who.unit)
-            + ",\"system\":" + (who == SYSTEM) + "}";
+            + ",\"system\":" + (who == SYSTEM) + ",\"twoStep\":" + (acc != null && acc.user(who.name) != null && acc.user(who.name).twoStep()) + "}";
     }
 
     /**
@@ -850,7 +889,7 @@ public class ApiServer {
                 StringBuilder sb = new StringBuilder("[");
                 for (Accounts.User u : acc.users()) {
                     if (sb.length() > 1) sb.append(',');
-                    sb.append("{\"name\":").append(str(u.name)).append(",\"role\":").append(str(u.role.name())).append(",\"active\":").append(u.active).append('}');
+                    sb.append("{\"name\":").append(str(u.name)).append(",\"role\":").append(str(u.role.name())).append(",\"active\":").append(u.active).append(",\"twoStep\":").append(u.twoStep()).append('}');
                 }
                 return new String[] { "200", sb.append(']').toString() };
             }
@@ -862,6 +901,7 @@ public class ApiServer {
                 try { role = Accounts.Role.valueOf(String.valueOf(q.search("role")).trim().toUpperCase()); }
                 catch (IllegalArgumentException e) { role = acc.user(name) == null ? null : acc.user(name).role; }
                 done = acc.setUser(name, role, pw);
+                if (done == null && "off".equals(q.search("twostep"))) done = acc.stopTwoStep(name);
                 if (done == null && q.search("active") != null) done = acc.setActive(name, !"0".equals(q.search("active")) && !"false".equals(q.search("active")));
                 if (done == null) done = "OK: user " + name + " saved as " + acc.user(name).role + (acc.user(name).active ? "" : " (switched off)");
             }
@@ -874,6 +914,22 @@ public class ApiServer {
                     audit(who, endpoint, q, true, "new device code issued for " + unit);
                     return new String[] { "200", "{\"ok\":true,\"unit\":" + str(unit) + ",\"code\":" + str(code) + ",\"message\":" + str("Device code for " + unit + ": " + code + " (the unit's earlier code no longer works)") + "}" };
                 }
+            }
+            case "POST /api/twostep/start" -> {
+                String secret = acc.startTwoStep(who.name);
+                if (secret == null) return new String[] { "422", err("two-step sign-in is for personal users only") };
+                return new String[] { "200", "{\"ok\":true,\"secret\":" + str(secret) + ",\"link\":" + str(Accounts.twoStepLink(who.name, secret))
+                    + ",\"message\":" + str("Add CrowdWatch to your authenticator app with this key, then enter the code it shows") + "}" };
+            }
+            case "POST /api/twostep/confirm" -> {
+                String r = acc.confirmTwoStep(who.name, q.search("code"), m.now());
+                done = r == null ? "OK: two-step sign-in is on for " + who.name + "; from now on a sign-in also needs the app's code" : r;
+            }
+            case "POST /api/twostep/off" -> {
+                Accounts.User u = acc.user(who.name);
+                if (u == null || !u.twoStep()) done = "two-step sign-in is not on";
+                else if (!Totp.verify(u.totp, q.search("code"), m.now())) done = "enter the current code from your app to switch it off";
+                else { String r = acc.stopTwoStep(who.name); done = r == null ? "OK: two-step sign-in switched off for " + who.name : r; }
             }
             case "POST /api/devices/revoke" -> done = acc.revokeDevice(String.valueOf(q.search("unit"))) ? "OK: the device code of " + q.search("unit") + " was cancelled" : "unit " + q.search("unit") + " has no device code";
             case "GET /api/audit" -> {

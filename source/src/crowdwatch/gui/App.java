@@ -132,6 +132,7 @@ public class App {
         }
         Watchdog watchdog = new Watchdog(m);
         watchdog.start();
+        crowdwatch.ds.LinkedList<crowdwatch.feed.CrowdFeed> feeds = crowdwatch.feed.Feeds.start(m, p.feeds, System.out::println);
         crowdwatch.net.ApiServer api = new crowdwatch.net.ApiServer(m, args.length > 3 ? args[3] : null, args.length > 4 ? args[4] : null, crowdwatch.net.ApiServer.RATE_LIMIT);
         crowdwatch.net.Accounts accounts = openAccounts(db, p.code);
         api.setAccounts(accounts);
@@ -139,12 +140,16 @@ public class App {
         else if (args.length < 4 || args[3].isBlank()) System.out.println("WARNING: no users and no control key - anyone on the network can read and change everything. Add users with: java -jar CrowdWatch.jar --user <name> <ROLE>");
         int bound = api.start(port, https ? tls() : null);
         System.out.println("CrowdWatch server for " + m.venueName() + " on " + (https ? "https" : "http") + "://localhost:" + bound + "/  (Ctrl+C to stop)");
+        if (db != null && Database.backupCopyFolder() != null) System.out.println("Daily backups are also copied to " + Database.backupCopyFolder().getAbsolutePath());
+        if (db != null) System.out.println("Saved every " + AUTOSAVE_SECONDS + " s; personal fields are encrypted with " + (System.getenv(crowdwatch.db.FieldCipher.KEY_VARIABLE) != null
+            ? crowdwatch.db.FieldCipher.KEY_VARIABLE : db.keyFile().getPath() + " - keep a copy of it apart from the backups"));
         java.util.concurrent.ScheduledExecutorService saver = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         if (db != null) saver.scheduleAtFixedRate(() -> {
             try { db.save(m); } catch (Exception e) { System.out.println(m.now() + "  AUTOSAVE FAILED: " + Database.explain(e)); }
-        }, 60, 60, java.util.concurrent.TimeUnit.SECONDS);
+        }, AUTOSAVE_SECONDS, AUTOSAVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             api.stop();
+            crowdwatch.feed.Feeds.stopAll(feeds);
             watchdog.stop();
             saver.shutdown();
             try { saver.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
@@ -156,6 +161,9 @@ public class App {
         }));
         Thread.currentThread().join();
     }
+
+    /** Seconds between automatic saves (property crowdwatch.autosave, at least 10; default 60). */
+    public static final int AUTOSAVE_SECONDS = Math.max(10, Integer.getInteger("crowdwatch.autosave", 60));
 
     /** Installation-wide accounts file (password hashes only). */
     public static final Path ACCOUNTS_FILE = Path.of("crowdwatch-data", "accounts.txt");

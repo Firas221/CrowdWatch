@@ -105,7 +105,7 @@ function drawMap(u){const el=$('map');if(!layout||!layout.map||!u.task){el.style
  const pad=Math.max(120,(x1-x0)*0.25);x0=Math.max(0,x0-pad);y0=Math.max(0,y0-pad);x1=Math.min(layout.w,x1+pad);y1=Math.min(layout.h,y1+pad);
  let s='<svg viewBox="'+x0+' '+y0+' '+(x1-x0)+' '+(y1-y0)+'">'+(mapUrl?'<image href="'+mapUrl+'" width="'+layout.w+'" height="'+layout.h+'"/>':'');
  layout.areas.forEach(p=>{const t=p.id===u.task.area,me=p.id===u.area;
-  s+='<rect x="'+p.x+'" y="'+p.y+'" width="'+p.w+'" height="'+p.h+'" rx="8" fill="'+(t?'#ff4d5e':me?'#2f7cf6':'#ffffff')+'" fill-opacity="'+(t||me?0.45:0.06)+'" stroke="'+(t?'#ff4d5e':me?'#4c9bff':'#3a4a66')+'" stroke-width="'+(t||me?5:1)+'"/>';
+  s+=(p.shape?'<polygon points="'+p.shape.join(' ')+'"':'<rect x="'+p.x+'" y="'+p.y+'" width="'+p.w+'" height="'+p.h+'" rx="8"')+' fill="'+(t?'#ff4d5e':me?'#2f7cf6':'#ffffff')+'" fill-opacity="'+(t||me?0.45:0.06)+'" stroke="'+(t?'#ff4d5e':me?'#4c9bff':'#3a4a66')+'" stroke-width="'+(t||me?5:1)+'"/>';
   if(t||me)s+='<text x="'+(p.x+8)+'" y="'+(p.y+28)+'" font-size="26" font-weight="700" fill="#fff">'+(t?'TASK ':'YOU ')+p.id+'</text>';});
  if(pts.length>1)s+='<polyline points="'+pts.map(q=>q[0]+','+q[1]).join(' ')+'" fill="none" stroke="#ffd166" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="22 14"/>';
  el.innerHTML=s+'</svg>';el.style.display='block';}

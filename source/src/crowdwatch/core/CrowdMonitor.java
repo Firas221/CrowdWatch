@@ -372,7 +372,16 @@ public class CrowdMonitor {
      * @return refused if the unit or area is unknown, it is already there, the area is restricted
      *         without approval, or the area cannot be reached from where the unit is
      */
-    public synchronized Result moveUnit(String unitId, String areaId, boolean approved) {
+    public synchronized Result moveUnit(String unitId, String areaId, boolean approved) { return moveUnit(unitId, areaId, approved ? "supervisor" : null); }
+
+    /**
+     * Moves a unit; a restricted area needs the name of the person who approved it, which is kept
+     * in the unit's history.
+     *
+     * @param approvedBy who approved entering a restricted area, or null if nobody did
+     */
+    public synchronized Result moveUnit(String unitId, String areaId, String approvedBy) {
+        boolean approved = approvedBy != null && !approvedBy.isBlank();
         Unit u = findUnit(unitId);
         if (u == null) return Result.fail("No unit " + unitId + ".");
         Area a = findArea(areaId);
@@ -382,9 +391,9 @@ public class CrowdMonitor {
         if (distancesFrom(u.area.id).distanceTo(a.id) >= Graph.INF) return Result.fail(a.id + " cannot be reached from " + u.area.id + ".");
         String from = u.area.id;
         u.area = a;
-        u.history.addLast(new HistoryEntry(now(), "Moved " + from + " -> " + a.id + (a.restricted ? " (approved)" : "")));
+        u.history.addLast(new HistoryEntry(now(), "Moved " + from + " -> " + a.id + (a.restricted ? " (approved by " + approvedBy + ")" : "")));
         changed();
-        return Result.ok("Unit " + u.id + " moved from " + from + " to " + a.id + ".");
+        return Result.ok("Unit " + u.id + " moved from " + from + " to " + a.id + (a.restricted ? " (approved by " + approvedBy + ")" : "") + ".");
     }
 
     /**

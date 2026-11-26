@@ -486,7 +486,7 @@
       var a = byId[p.id] || p, lv = a.restricted ? 'GRAY' : (a.stale || a.suspect) ? 'GRAY' : a.level, col = cssVar(lv);
       var hot = !a.restricted && (a.level === 'HIGH' || a.level === 'CRITICAL');
       svg += '<g class="ma' + (hot ? ' hot' : '') + '" data-act="area" data-arg="' + esc(p.id) + '"><title>' + esc((a.name || p.id) + ' - ' + (a.restricted ? 'staff only' : pct(a) + '% ' + a.level)) + '</title>'
-        + '<rect x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h + '" rx="8" fill="' + col + '" fill-opacity="' + (a.restricted ? 0.12 : hot ? 0.42 : 0.26) + '" stroke="' + col + '" stroke-width="' + (hot ? 4 : 2)
+        + (p.shape ? '<polygon points="' + p.shape.join(' ') + '"' : '<rect x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h + '" rx="8"') + ' stroke-linejoin="round" fill="' + col + '" fill-opacity="' + (a.restricted ? 0.12 : hot ? 0.42 : 0.26) + '" stroke="' + col + '" stroke-width="' + (hot ? 4 : 2)
         + '"' + (p.exit ? ' stroke-dasharray="10 6"' : '') + (a.evacuating ? ' stroke-dasharray="4 4"' : '') + '/>'
         + '<text x="' + (p.x + 7) + '" y="' + (p.y + fs + 4) + '" font-size="' + fs + '" font-weight="800" fill="' + cssVar('text') + '">' + esc(p.id) + '</text>'
         + (a.restricted ? '' : '<text x="' + (p.x + 7) + '" y="' + (p.y + 2 * fs + 8) + '" font-size="' + Math.round(fs * 1.25) + '" font-weight="800" fill="' + cssVar(lv + '-t') + '">' + pct(a) + '%</text>')
@@ -661,6 +661,16 @@
     var h = '<section class="card"><h2>Users and access</h2>'
       + (S.token ? '<div class="sub">Signed in as ' + esc(S.officer) + ' <span class="role-tag">' + esc(S.role) + '</span></div>' : '')
       + '<div class="sub">Every change made here or on the network is recorded with the name of the person who made it.</div>';
+    if (S.token) {
+      h += '<h2>Two-step sign-in</h2>' + (S.me && S.me.twoStep
+        ? '<div class="sub">On: signing in also needs the code from your authenticator app.</div><form class="form" data-form="twostepoff"><div class="inline"><label>Current code<input id="tsOff" inputmode="numeric" maxlength="6"></label><button class="btn">Switch off</button></div></form>'
+        : S.twoStep
+          ? '<div class="sub">Add CrowdWatch to an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis ...) with this key, or open the link on the phone, then enter the code the app shows.</div>'
+            + '<div><span class="code-big">' + esc(S.twoStep.secret.replace(/(.{4})/g, '$1 ').trim()) + '</span></div><div class="sub"><a href="' + esc(S.twoStep.link) + '">Open in the authenticator app</a></div>'
+            + '<form class="form" data-form="twostepok"><div class="inline"><label>Code from the app<input id="tsCode" inputmode="numeric" maxlength="6" data-keep></label><button class="btn-primary">Switch on</button></div></form>'
+          : '<div class="sub">Off. With it on, signing in needs a 6-digit code from an app on your phone as well as the password, so a stolen password is not enough. Recommended for administrators.</div>'
+            + '<div class="actions"><button class="btn" data-act="twostep">Set up two-step sign-in</button></div>');
+    }
     if (can('OFFICER')) {
       h += '<h2>Scout device codes</h2><div class="sub">Each scout phone gets its own code that only works for its unit. A new code cancels the old one.</div>'
         + '<form class="form" data-form="devcode"><div class="inline"><label>Unit<select id="dcUnit" data-keep>' + units + '</select></label>'
@@ -672,16 +682,17 @@
         }).join('') : '<tr><td colspan="6">none yet</td></tr>') + '</tbody></table></div>';
     }
     if (can('ADMIN') && S.logins !== null) {
-      h += '<h2>Users</h2>' + (S.users ? '<div class="tbl-wrap"><table><thead><tr><th>User name</th><th>Role</th><th>Can sign in</th></tr></thead><tbody>' + S.users.map(function (u) {
-          return '<tr><td class="mono">' + esc(u.name) + '</td><td>' + esc(u.role) + '</td><td>' + (u.active ? 'OK' : '-') + '</td></tr>';
+      h += '<h2>Users</h2>' + (S.users ? '<div class="tbl-wrap"><table><thead><tr><th>User name</th><th>Role</th><th>Can sign in</th><th>Two-step</th></tr></thead><tbody>' + S.users.map(function (u) {
+          return '<tr><td class="mono">' + esc(u.name) + '</td><td>' + esc(u.role) + (u.role === 'ADMIN' && !u.twoStep ? ' <span class="pill k-MODERATE">no two-step</span>' : '') + '</td><td>' + (u.active ? 'OK' : '-') + '</td><td>' + (u.twoStep ? 'on' : '-') + '</td></tr>';
         }).join('') + '</tbody></table></div>' : '')
         + '<form class="form" data-form="user"><div class="inline"><label>User name<input id="uName" data-keep required autocapitalize="none"></label>'
         + '<label>Role<select id="uRole" data-keep>' + ['OPERATOR', 'OFFICER', 'ADMIN'].map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('') + '</select></label></div>'
         + '<div class="inline"><label>Password<input id="uPass" type="password" autocomplete="new-password" placeholder="empty keeps the current password"></label>'
-        + '<label class="switch"><input type="checkbox" id="uActive" data-keep checked> Can sign in</label></div><button class="btn-primary">Save user</button></form>';
+        + '<label class="switch"><input type="checkbox" id="uActive" data-keep checked> Can sign in</label><label class="switch"><input type="checkbox" id="uTsOff" data-keep> Switch two-step off (lost phone)</label></div><button class="btn-primary">Save user</button></form>';
     }
     return h + '</section>';
   }
+  function loadMe() { return api('/api/me').then(function (me) { S.me = me; }).catch(function () { }); }
   function loadUsers() { if (!can('ADMIN')) return Promise.resolve(); return api('/api/users').then(function (u) { S.users = Array.isArray(u) ? u : null; }).catch(function () { S.users = null; }); }
 
   // ---------- dialogs, toast ----------
@@ -757,6 +768,7 @@
       case 'countreset': if (confirm('Reset the count check? Only do this after a full recount: the total now becomes the new starting point.')) act('/api/countcheck/reset', {}); break;
       case 'plan': S.planMode = arg; store.set('planMode', arg); render(); break;
       case 'audit': api('/api/audit').then(function (r) { if (Array.isArray(r)) S.audit = r; else toast(r.message, 'bad'); render(); }).catch(fail); break;
+      case 'twostep': api('/api/twostep/start', {}).then(function (r) { if (r.ok) S.twoStep = r; else toast(r.message, 'bad'); render(); }).catch(fail); break;
       case 'devrevoke': act('/api/devices/revoke', { unit: $('dcUnit').value }); break;
     }
   });
@@ -786,7 +798,9 @@
           modal('blue', 'Scout device codes', r.unit, '<div class="form"><div>Type this code on the scout phone of ' + esc(r.unit) + '. It replaces the unit\'s earlier code.</div><div><span class="code-big">' + esc(r.code)
             + '</span></div><div class="dialog-foot"><button class="btn-primary" data-act="close">Close</button></div></div>');
         }).catch(fail); break;
-      case 'user': act('/api/users', { name: v('uName'), role: v('uRole'), password: $('uPass').value || null, active: $('uActive').checked ? '1' : '0' }, function () { $('uPass').value = ''; loadUsers().then(render); }); break;
+      case 'twostepok': act('/api/twostep/confirm', { code: v('tsCode') }, function () { S.twoStep = null; loadMe().then(render); }); break;
+      case 'twostepoff': act('/api/twostep/off', { code: v('tsOff') }, function () { loadMe().then(render); }); break;
+      case 'user': act('/api/users', { name: v('uName'), role: v('uRole'), password: $('uPass').value || null, active: $('uActive').checked ? '1' : '0', twostep: $('uTsOff').checked ? 'off' : null }, function () { $('uPass').value = ''; loadUsers().then(render); }); break;
       case 'lostreport': act('/api/incidents', { category: lostCategory(), area: v('lArea'), details: v('lDetails'), contact: v('lContact') || null, language: v('lLang') || null },
         function () { $('lDetails').value = ''; }); break;
     }
@@ -824,7 +838,7 @@
   // ---------- sign in ----------
   function start() {
     $('login').hidden = true; $('app').hidden = false;
-    loadUsers().then(poll);
+    Promise.all([loadUsers(), loadMe()]).then(poll);
     clearInterval(S.timer); S.timer = setInterval(function () { if (!document.hidden) poll(); }, POLL_MS);
   }
   // shows user name and password when the server has personal logins, otherwise officer name and control key
@@ -852,9 +866,11 @@
     $('lgErr').textContent = '';
     if (S.userMode) {
       var body = new URLSearchParams({ user: $('lgUser').value.trim(), password: $('lgPass').value });
+      if (!$('lgCodeBox').hidden) body.append('code', $('lgCode').value.trim());
       fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() }).then(function (r) { return r.json(); }).then(function (r) {
+        if (r.needCode) { $('lgCodeBox').hidden = false; $('lgCode').value = ''; $('lgCode').focus(); }
         if (!r.ok) { $('lgErr').textContent = r.message; return; }
-        $('lgPass').value = '';
+        $('lgPass').value = ''; $('lgCode').value = ''; $('lgCodeBox').hidden = true;
         S.token = r.token; S.role = r.role; S.officer = r.name; S.key = '';
         store.set('token', S.token); store.set('role', S.role); store.set('officer', S.officer); store.set('key', null);
         // officers check in on signing in; operators do not supervise

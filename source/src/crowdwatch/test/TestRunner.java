@@ -1453,6 +1453,197 @@ public class TestRunner {
                 + ", " + (consolePage.contains("/i18n.js") ? "console loads it" : "console misses it") + ", " + (scoutHtml.contains("/i18n.js") ? "scout loads it" : "scout misses it")
                 + ", " + (consolePage.contains("data-lang-btn") && scoutHtml.contains("data-lang-btn") ? "both have the button" : "button missing"));
 
+        System.out.println("PART N - TWO-STEP SIGN-IN, SAVED SESSIONS, DESKTOP APPROVAL, ENCRYPTION, SENSOR FEEDS, SHAPES\n");
+        String rfc = crowdwatch.net.Totp.code("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 1L);   // RFC 6238 test key, time 59 s
+        java.nio.file.Path acc3File = java.nio.file.Path.of("build", "test-accounts", "accounts-n.txt");
+        java.nio.file.Files.deleteIfExists(acc3File);
+        crowdwatch.net.Accounts acc3 = new crowdwatch.net.Accounts(acc3File);
+        acc3.setUser("admin", crowdwatch.net.Accounts.Role.ADMIN, "Admin-pass-1");
+        acc3.setUser("omar", crowdwatch.net.Accounts.Role.OPERATOR, "Omar-pass-1");
+        acc3.setUser("sara", crowdwatch.net.Accounts.Role.OFFICER, "Sara-pass-1");
+        LocalDateTime nt = LocalDateTime.of(2026, 12, 1, 9, 0);
+        String secret = acc3.startTwoStep("admin");
+        String badConfirm = acc3.confirmTwoStep("admin", "000000".equals(crowdwatch.net.Totp.code(secret, nt)) ? "111111" : "000000", nt);
+        String okConfirm = acc3.confirmTwoStep("admin", crowdwatch.net.Totp.code(secret, nt), nt);
+        crowdwatch.net.Accounts.Login noCode = acc3.login("admin", "Admin-pass-1", null, nt);
+        crowdwatch.net.Accounts.Login wrongCode = acc3.login("admin", "Admin-pass-1", "123456".equals(crowdwatch.net.Totp.code(secret, nt)) ? "654321" : "123456", nt);
+        crowdwatch.net.Accounts.Login rightCode = acc3.login("admin", "Admin-pass-1", crowdwatch.net.Totp.code(secret, nt.plusSeconds(20)), nt.plusSeconds(20));
+        check("Two-step sign-in: codes as in RFC 6238; switched on only after a right code from the app; then a sign-in needs the password and the current code",
+            "RFC code 287082, wrong set-up code refused, on, no code: asked, wrong code: refused, right code: signed in",
+            "RFC code " + rfc + ", wrong set-up code " + (badConfirm != null ? "refused" : "accepted") + ", " + (okConfirm == null ? "on" : okConfirm)
+                + ", no code: " + (noCode.needCode && noCode.token == null ? "asked" : "?") + ", wrong code: " + (wrongCode.token == null ? "refused" : "accepted")
+                + ", right code: " + (rightCode.token != null ? "signed in" : "refused"));
+
+        String sTok = acc3.login("sara", "Sara-pass-1", nt);
+        String fileN = java.nio.file.Files.readString(acc3File);
+        crowdwatch.net.Accounts afterRestart = new crowdwatch.net.Accounts(acc3File);
+        crowdwatch.net.Accounts.Who still = afterRestart.session(sTok, nt.plusHours(1));
+        afterRestart.logout(sTok);
+        crowdwatch.net.Accounts afterLogout = new crowdwatch.net.Accounts(acc3File);
+        crowdwatch.net.Accounts.Who gone = afterLogout.session(sTok, nt.plusHours(1));
+        String perms;
+        try { perms = java.nio.file.attribute.PosixFilePermissions.toString(java.nio.file.Files.getPosixFilePermissions(acc3File)); } catch (UnsupportedOperationException e) { perms = "rw-------"; }
+        check("Saved sessions: a sign-in survives a restart of the server, signing out ends it for good; the file holds only a hash of the token and only its owner can read it",
+            "after restart: sara, after sign-out: none, token not in file, rw-------",
+            "after restart: " + (still == null ? "none" : still.name) + ", after sign-out: " + (gone == null ? "none" : gone.name) + ", token " + (fileN.contains(sTok) ? "IN FILE" : "not in file") + ", " + perms);
+
+        // the server: code asked at sign-in; the plain dashboard signs in with a cookie
+        CrowdMonitor ns = venue("airport");
+        crowdwatch.net.ApiServer napi = new crowdwatch.net.ApiServer(ns, null, null, 0);
+        napi.setAccounts(acc3);
+        int nport = napi.start(0);
+        String nb = "http://127.0.0.1:" + nport;
+        java.net.http.HttpClient nc = java.net.http.HttpClient.newBuilder().proxy(java.net.http.HttpClient.Builder.NO_PROXY).followRedirects(java.net.http.HttpClient.Redirect.NEVER).build();
+        String needCodeReply = call(nc, nb + "/api/login", "user=admin&password=Admin-pass-1");
+        String withCode = call(nc, nb + "/api/login", "user=admin&password=Admin-pass-1&code=" + crowdwatch.net.Totp.code(secret, ns.now()));
+        String classicNoLogin = call(nc, nb + "/classic", null);
+        java.net.http.HttpResponse<String> cl = nc.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(nb + "/classic/login")).header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString("user=sara&password=Sara-pass-1")).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+        String setCookie = cl.headers().firstValue("Set-Cookie").orElse("");
+        String cookieVal = setCookie.contains(";") ? setCookie.substring(0, setCookie.indexOf(';')) : setCookie;
+        String classicIn = call(nc, nb + "/classic", null, "Cookie", cookieVal);
+        String areasByCookie = call(nc, nb + "/api/areas", null, "Cookie", cookieVal);
+        napi.stop();
+        check("Server: a user with two-step sign-in is asked for the code; the plain dashboard has its own sign-in page and then works with an HttpOnly, SameSite cookie",
+            "401 needCode, 200 with code, classic sign-in page, cookie HttpOnly SameSite=Strict, classic 200 with Sign out, API 200 with the cookie",
+            code(needCodeReply) + (needCodeReply.contains("\"needCode\":true") ? " needCode" : "") + ", " + code(withCode) + " with code, "
+                + (classicNoLogin.contains("/classic/login") ? "classic sign-in page" : "no sign-in page") + ", cookie " + (setCookie.contains("HttpOnly") ? "HttpOnly " : "") + (setCookie.contains("SameSite=Strict") ? "SameSite=Strict" : "")
+                + ", classic " + code(classicIn) + (classicIn.contains("Sign out") ? " with Sign out" : "") + ", API " + code(areasByCookie) + " with the cookie");
+
+        // desktop windows: a password check without a session, and who approved a restricted area
+        crowdwatch.net.Accounts.Who desk = acc3.verify("omar", "Omar-pass-1", null, nt, "desktop sign-in");
+        crowdwatch.net.Accounts.Who deskBad = acc3.verify("omar", "nope", null, nt, "desktop sign-in");
+        CrowdMonitor rm = venue("airport");
+        String restricted = null;
+        for (Area ra : rm.areaTree().inOrder()) if (ra.restricted) { restricted = ra.id; break; }
+        Unit ru = null;
+        for (Unit uu : rm.unitTree().inOrder()) if (rm.distancesFrom(uu.area.id).distanceTo(restricted) < crowdwatch.ds.Graph.INF) { ru = uu; break; }
+        Result noApproval = rm.moveUnit(ru.id, restricted, (String) null);
+        Result approvedMove = rm.moveUnit(ru.id, restricted, "sara");
+        check("Desktop sign-in checks the password without opening a session; entering a restricted area needs an approver, whose name is kept in the unit's history",
+            "omar OPERATOR, wrong password refused, no approver refused, approved by sara (in history)",
+            (desk == null ? "refused" : desk.name + " " + desk.role) + ", wrong password " + (deskBad == null ? "refused" : "accepted")
+                + ", no approver " + (noApproval.ok ? "moved" : "refused") + ", " + (approvedMove.ok && ru.history.getLast().text.contains("approved by sara") ? "approved by sara (in history)" : approvedMove.message));
+
+        if (Database.driverAvailable()) {
+            deleteTree(new java.io.File("build/test-db/enc"));
+            System.setProperty(Database.COPY_PROPERTY, new java.io.File("build/test-db/enc/second-disk").getPath());
+            CrowdMonitor em = venue("airport");
+            em.officerCheckIn("Officer Sara");
+            em.reportIncident("MEDICAL", "GATE-B", "Man in blue shirt, chest pain", "+20 100 555 0101", "Arabic");
+            int encId = em.nextIncidentId() - 1;
+            Database edb = new Database("build/test-db/enc/airport");
+            edb.save(em);
+            String rawDetails, rawContact;
+            try (java.sql.Connection c = java.sql.DriverManager.getConnection("jdbc:derby:" + new java.io.File("build/test-db/enc/airport").getAbsolutePath());
+                 java.sql.Statement stN = c.createStatement(); java.sql.ResultSet rsN = stN.executeQuery("SELECT details, contact FROM incidents WHERE id = " + encId)) {
+                rsN.next(); rawDetails = rsN.getString(1); rawContact = rsN.getString(2);
+            }
+            CrowdMonitor eb = new CrowdMonitor(() -> time);
+            edb.load(eb);
+            Incident encBack = eb.findIncident(encId);
+            java.io.File copied = new java.io.File("build/test-db/enc/second-disk/airport/" + java.time.LocalDate.now() + "/airport");
+            check("Personal data encrypted in the database (AES-256-GCM, key file made once, owner only); read back as it was; the daily backup is also copied to a second folder",
+                "details and contact stored encrypted, no plain text, read back, key file made, backup copied",
+                (rawDetails.startsWith("enc1:") && rawContact.startsWith("enc1:") ? "details and contact stored encrypted" : "PLAIN: " + rawDetails)
+                    + ", " + (rawDetails.contains("blue shirt") || rawContact.contains("555") ? "PLAIN TEXT FOUND" : "no plain text")
+                    + ", " + (encBack != null && "Man in blue shirt, chest pain".equals(encBack.details) && "+20 100 555 0101".equals(encBack.contact) ? "read back" : "not read back")
+                    + ", " + (edb.keyFile().exists() ? "key file made" : "no key file") + ", " + (copied.isDirectory() ? "backup copied" : "no copy: " + edb.lastBackupCopy()));
+            System.clearProperty(Database.COPY_PROPERTY);
+
+            em.resolve(encId, "treated");
+            later(25 * 60);
+            em.officerCheckIn("Officer Sara");
+            em.tick();
+            edb.save(em);
+            String kept;
+            try (java.sql.Connection c = java.sql.DriverManager.getConnection("jdbc:derby:" + new java.io.File("build/test-db/enc/airport").getAbsolutePath());
+                 java.sql.Statement stN = c.createStatement(); java.sql.ResultSet rsN = stN.executeQuery("SELECT details FROM incident_archive WHERE id = " + encId)) {
+                kept = rsN.next() ? (rsN.getString(1) == null ? "erased" : rsN.getString(1).startsWith("enc1:") ? "kept encrypted" : "plain") : "not archived";
+            }
+            later(31 * 24 * 60);
+            em.officerCheckIn("Officer Sara");
+            edb.save(em);
+            String erased;
+            try (java.sql.Connection c = java.sql.DriverManager.getConnection("jdbc:derby:" + new java.io.File("build/test-db/enc/airport").getAbsolutePath());
+                 java.sql.Statement stN = c.createStatement(); java.sql.ResultSet rsN = stN.executeQuery("SELECT details, contact, category FROM incident_archive WHERE id = " + encId)) {
+                erased = rsN.next() ? (rsN.getString(1) == null && rsN.getString(2) == null ? "erased (category " + rsN.getString(3) + " kept)" : "still there") : "not archived";
+            }
+            check("Retention: archived incidents keep their personal data encrypted for 30 days (retention: line), then details and contact are erased; the rest of the record stays",
+                "after 1 day: kept encrypted, after 31 days: erased (category MEDICAL kept)", "after 1 day: " + kept + ", after 31 days: " + erased);
+        }
+
+        // sensor feeds
+        CrowdMonitor fm = venue("airport");
+        crowdwatch.ds.LinkedList<String> flog = new crowdwatch.ds.LinkedList<>();
+        int fApplied = crowdwatch.feed.LineFormat.applyAll(fm, "# counts\narea,count\nGATE-A,100\nGATE-A;+5\nmove,GATE-A,DUTYFREE-1,3\nGATE-Z,9\nGATE-A,lots\n", Source.SENSOR, flog);
+        int gateAn = fm.findArea("GATE-A").occupancy;
+        java.nio.file.Path inbox = java.nio.file.Path.of("build", "test-feed", "inbox");
+        deleteTree(inbox.getParent().toFile());
+        java.nio.file.Files.createDirectories(inbox);
+        java.nio.file.Files.writeString(inbox.resolve("counts-0900.csv"), "GATE-B,700\nCHECKIN-1,250\n");
+        java.nio.file.Files.writeString(inbox.resolve("junk.csv"), "nothing useful here\n");
+        crowdwatch.feed.FolderFeed ff = new crowdwatch.feed.FolderFeed(inbox, 10);
+        ff.scan(fm);
+        check("Count lines and the folder feed: counts, +/- changes and moves are applied, bad lines are listed; files are read once and moved to done/ or failed/",
+            "3 applied, GATE-A 102, 2 problems; GATE-B 700, CHECKIN-1 250, done/counts-0900.csv, failed/junk.csv",
+            fApplied + " applied, GATE-A " + gateAn + ", " + flog.size() + " problems; GATE-B " + fm.findArea("GATE-B").occupancy + ", CHECKIN-1 " + fm.findArea("CHECKIN-1").occupancy
+                + ", " + (java.nio.file.Files.exists(inbox.resolve("done/counts-0900.csv")) ? "done/counts-0900.csv" : "?") + ", " + (java.nio.file.Files.exists(inbox.resolve("failed/junk.csv")) ? "failed/junk.csv" : "?"));
+
+        com.sun.net.httpserver.HttpServer vendor = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        String[] seenAuth = { null };
+        vendor.createContext("/counts", ex -> {
+            seenAuth[0] = ex.getRequestHeaders().getFirst("Authorization");
+            byte[] b = "[{\"area\":\"GATE-C\",\"count\":321,\"camera\":\"c7\"},{\"area\":\"SEC-2\",\"occupancy\":44,\"source\":\"SENSOR\"}]".getBytes();
+            ex.sendResponseHeaders(200, b.length);
+            try (java.io.OutputStream o = ex.getResponseBody()) { o.write(b); }
+        });
+        vendor.start();
+        crowdwatch.feed.PollFeed pf = new crowdwatch.feed.PollFeed(java.net.URI.create("http://127.0.0.1:" + vendor.getAddress().getPort() + "/counts"), 15, "vendor-token");
+        pf.pollOnce(fm);
+        vendor.stop(0);
+        crowdwatch.feed.TcpFeed tf = new crowdwatch.feed.TcpFeed(0, "127.0.0.1");
+        tf.start(fm);
+        String tcpReplies;
+        try (java.net.Socket sock = new java.net.Socket("127.0.0.1", tf.port());
+             java.io.PrintWriter out = new java.io.PrintWriter(new java.io.OutputStreamWriter(sock.getOutputStream(), java.nio.charset.StandardCharsets.UTF_8), true);
+             java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(sock.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+            out.println("ARRIVALS-1 80");
+            String tr1 = in.readLine();
+            out.println("NOWHERE 5");
+            String tr2 = in.readLine();
+            tcpReplies = tr1 + " / " + (tr2 != null && tr2.startsWith("ERR") ? "ERR" : tr2);
+        }
+        crowdwatch.feed.TcpFeed tf2 = new crowdwatch.feed.TcpFeed(0, "10.9.9.9");
+        tf2.start(fm);
+        String refusedReply;
+        try (java.net.Socket sock = new java.net.Socket("127.0.0.1", tf2.port())) {
+            sock.getOutputStream().write("GATE-A 1\n".getBytes());
+            refusedReply = sock.getInputStream().read() == -1 ? "closed" : "answered";
+        } catch (java.io.IOException e) { refusedReply = "closed"; }
+        tf.stop(); tf2.stop();
+        check("Polling a counting system (JSON with a bearer token from an environment variable) and a TCP feed for devices: OK or ERR per line, unknown addresses refused",
+            "GATE-C 321, SEC-2 44, token sent, TCP: OK / ERR, ARRIVALS-1 80, other address closed",
+            "GATE-C " + fm.findArea("GATE-C").occupancy + ", SEC-2 " + fm.findArea("SEC-2").occupancy + ", " + ("Bearer vendor-token".equals(seenAuth[0]) ? "token sent" : "no token")
+                + ", TCP: " + tcpReplies + ", ARRIVALS-1 " + fm.findArea("ARRIVALS-1").occupancy + ", other address " + refusedReply);
+
+        VenueProfile fv = VenueProfile.parse("venue: Feeds\ncode: feeds\nthresholds: 60 80 95\nretention: 7d\nfeed: folder counts 5\nfeed: tcp 5020 10.0.0.7\narea: A | Hall | S | HALL | 100\n");
+        String badFeed;
+        try { VenueProfile.parse("venue: X\ncode: x\nthresholds: 60 80 95\nfeed: modem COM3\narea: A | Hall | S | HALL | 100\n"); badFeed = "accepted"; }
+        catch (IllegalArgumentException e) { badFeed = "refused"; }
+        CrowdMonitor umN = venue("umrah");
+        String shape = umN.venue().shapeOf("MATAF");
+        String bbox = "";
+        for (String[] posN : umN.venue().positions) if (posN[0].equals("MATAF")) bbox = posN[1] + " " + posN[2] + " " + posN[3] + " " + posN[4];
+        crowdwatch.net.ApiServer sapi2 = new crowdwatch.net.ApiServer(umN, null, null, 0);
+        int sp = sapi2.start(0);
+        String layoutJson = call(nc, "http://127.0.0.1:" + sp + "/api/layout", null);
+        sapi2.stop();
+        check("Venue lines: feed: and retention: are read, an unknown feed is refused; shape: gives an area an outline (the Mataf is an octagon) whose box is its position",
+            "2 feeds, retention 7, unknown feed refused, MATAF 8 points, box 397 367 206 206, layout has the shape",
+            fv.feeds.size() + " feeds, retention " + fv.retentionDays + ", unknown feed " + badFeed + ", MATAF " + (shape == null ? 0 : shape.split(" ").length / 2) + " points, box " + bbox
+                + ", layout " + (layoutJson.contains("\"id\":\"MATAF\",\"shape\":[603,513") ? "has the shape" : "has no shape"));
+
         if (Database.driverAvailable()) Database.shutdown();
 
         System.out.println("=====================================");

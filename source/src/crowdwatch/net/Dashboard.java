@@ -21,7 +21,32 @@ final class Dashboard {
      * @param needsKey true to add an API key field to the forms
      * @return the complete HTML page
      */
-    static String page(CrowdMonitor m, boolean needsKey) {
+    static String page(CrowdMonitor m, boolean needsKey) { return page(m, needsKey, false); }
+
+    /**
+     * @param signedIn true if the viewer signed in with a user name (a Sign out button is added)
+     */
+    static String page(CrowdMonitor m, boolean needsKey, boolean signedIn) {
+        return page0(m, needsKey).replace("<body>", "<body>" + (signedIn
+            ? "<form method='post' action='/classic/logout' style='position:fixed;top:8px;right:12px;margin:0'><button>Sign out</button></form>" : ""));
+    }
+
+    /** @return the sign-in page of the plain dashboard (works without JavaScript) */
+    static String loginPage(String msg) {
+        return "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>CrowdWatch - sign in</title>"
+            + "<style>body{font-family:system-ui,Arial,sans-serif;background:#eef2f7;display:grid;place-items:center;min-height:100vh;margin:0}"
+            + "form{background:#fff;padding:24px;border-radius:10px;display:grid;gap:10px;width:300px;box-shadow:0 4px 20px #0002}"
+            + "input,button{font:inherit;padding:9px;border:1px solid #c5cfdc;border-radius:6px}button{background:#1B3A5C;color:#fff;border:0}"
+            + "p{color:#b00020;margin:0}</style></head><body><form method='post' action='/classic/login'><b>CrowdWatch - plain dashboard</b>"
+            + (msg == null ? "" : "<p>" + esc(msg) + "</p>")
+            + "<label>User name<br><input name='user' autocomplete='username' required></label>"
+            + "<label>Password<br><input name='password' type='password' autocomplete='current-password' required></label>"
+            + "<label>Code from the authenticator app (if you use two-step sign-in)<br><input name='code' inputmode='numeric' autocomplete='one-time-code'></label>"
+            + "<button>Sign in</button></form></body></html>";
+    }
+
+    // the page itself
+    private static String page0(CrowdMonitor m, boolean needsKey) {
         StringBuilder areas = new StringBuilder(), cats = new StringBuilder();
         for (Area a : m.areaTree().inOrder()) areas.append("<option value='").append(esc(a.id)).append("'>").append(esc(a.id + " - " + a.name)).append("</option>");
         for (Category c : m.categoryTree().inOrder()) cats.append("<option value='").append(esc(c.code)).append("'>").append(esc(c.label + " (" + c.priority + ")")).append("</option>");

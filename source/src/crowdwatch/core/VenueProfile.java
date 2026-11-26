@@ -47,6 +47,8 @@ public class VenueProfile {
     public int ackMinutes = 2;
     // minutes after which a resolved incident is moved to the archive (default 24 hours)
     public int archiveMinutes = 24 * 60;
+    // days after which the details and contact of archived incidents are erased (retention: line; 0 = keep)
+    public int retentionDays = 30;
     // URL of a radio or messaging gateway that receives every unit message, or null
     public String gateway;
 
@@ -101,10 +103,21 @@ public class VenueProfile {
     public double scale;
     // where each area is on the drawing: {AREA, x, y, w, h}
     public final LinkedList<String[]> positions = new LinkedList<>();
+    // outlines of areas that are not rectangles: { id, "x1 y1 x2 y2 ..." } (shape: lines); the area's
+    // position is then the outline's bounding box
+    public final LinkedList<String[]> shapes = new LinkedList<>();
+
+    /** @return the outline points of an area ("x1 y1 x2 y2 ..."), or null if it is a rectangle */
+    public String shapeOf(String areaId) {
+        for (String[] s : shapes) if (s[0].equalsIgnoreCase(areaId)) return s[1];
+        return null;
+    }
     // how many people a minute each exit lets out: {AREA, people per minute}
     public final LinkedList<String[]> exitFlows = new LinkedList<>();
     // fire zones (compartments): {name, AREA, AREA, ...}
     public final LinkedList<String[]> fireZones = new LinkedList<>();
+    // sensor connections (feed: lines), e.g. "folder counts 10", "poll https://... 15", "tcp 5020 10.0.0.7"
+    public final LinkedList<String> feeds = new LinkedList<>();
     // walking speed used for "auto" link times, metres per minute (a crowd moves at about 1 m/s)
     public static final double WALK_METRES_PER_MINUTE = 60;
 
@@ -163,6 +176,13 @@ public class VenueProfile {
                     int f = v.endsWith("m") ? 1 : 60;
                     p.archiveMinutes = minutes(v.replaceAll("[hm]$", ""), i) * f;
                 }
+                case "feed" -> {
+                    String[] f = value.trim().split("\\s+");
+                    if (f.length < 2 || !(f[0].equalsIgnoreCase("folder") || f[0].equalsIgnoreCase("poll") || f[0].equalsIgnoreCase("tcp")))
+                        throw new IllegalArgumentException("Line " + (i + 1) + ": feed must be 'folder <path> [s]', 'poll <url> [s] [token-variable]' or 'tcp <port> [addresses]'");
+                    p.feeds.addLast(value.trim());
+                }
+                case "retention" -> p.retentionDays = minutes(value.trim().toLowerCase().replaceAll("d$", ""), i);
                 case "gateway" -> p.gateway = value;
                 case "stale" -> p.staleMinutes = minutes(value, i);
                 case "jump" -> p.jumpPercent = minutes(value, i);
@@ -212,7 +232,24 @@ public class VenueProfile {
                 case "pos" -> {
                     String[] f = need(fields(value, "\\s+"), 5, i);
                     for (int k = 1; k <= 4; k++) number(f[k], i);
-                    p.positions.addLast(new String[] { f[0].toUpperCase(), f[1], f[2], f[3], f[4] });
+                    if (p.shapeOf(f[0]) == null) p.positions.addLast(new String[] { f[0].toUpperCase(), f[1], f[2], f[3], f[4] });   // a shape: line wins
+                }
+                case "shape" -> {
+                    String[] f = fields(value, "\\s+");
+                    if (f.length < 7 || f.length % 2 == 0)
+                        throw new IllegalArgumentException("Line " + (i + 1) + ": shape needs an area and at least 3 points: AREA x1 y1 x2 y2 x3 y3 ...");
+                    double x0 = Double.MAX_VALUE, y0 = Double.MAX_VALUE, x1 = -Double.MAX_VALUE, y1 = -Double.MAX_VALUE;
+                    StringBuilder pts = new StringBuilder();
+                    for (int k = 1; k < f.length; k += 2) {
+                        number(f[k], i); number(f[k + 1], i);
+                        double x = Double.parseDouble(f[k]), y = Double.parseDouble(f[k + 1]);
+                        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+                        pts.append(k > 1 ? " " : "").append(f[k]).append(' ').append(f[k + 1]);
+                    }
+                    String id = f[0].toUpperCase();
+                    for (String[] old : p.positions) if (old[0].equals(id)) { p.positions.remove(old); break; }
+                    p.positions.addLast(new String[] { id, fmt(x0), fmt(y0), fmt(x1 - x0), fmt(y1 - y0) });
+                    p.shapes.addLast(new String[] { id, pts.toString() });
                 }
                 case "exitflow" -> {
                     String[] f = need(fields(value, "\\s+"), 2, i);
@@ -299,6 +336,9 @@ public class VenueProfile {
         String f = mapFile == null ? "" : mapFile.toLowerCase();
         return f.endsWith(".png") ? "image/png" : f.endsWith(".svg") ? "image/svg+xml" : "image/jpeg";
     }
+
+    // a coordinate without a needless ".0"
+    private static String fmt(double d) { return d == Math.rint(d) ? String.valueOf((long) d) : String.valueOf(d); }
 
     /** Checks that a text is a number (used for positions), naming the line if not. */
     private static double number(String s, int line) {

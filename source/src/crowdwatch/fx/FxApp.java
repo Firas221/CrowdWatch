@@ -61,6 +61,10 @@ public class FxApp extends Application {
     private volatile Database db;
     // logins, device codes and the audit log (shared with the network server); null if the accounts file cannot be read
     private crowdwatch.net.Accounts accounts;
+    // the signed-in user (null when no users exist)
+    private crowdwatch.net.Accounts.Who me;
+    // the venue's sensor connections (feed: lines)
+    private crowdwatch.ds.LinkedList<crowdwatch.feed.CrowdFeed> feeds;
     private Stage stage;
     private Scene scene;
     private final SimulatedFeed sim = new SimulatedFeed(1500, 7);
@@ -172,11 +176,17 @@ public class FxApp extends Application {
             note = App.loadOrSeed(m, null, p);
         }
         openAccounts();
+        if (accounts != null && accounts.hasUsers()) {
+            me = signIn("CrowdWatch - sign in", "desktop sign-in");
+            if (me == null) { Platform.exit(); System.exit(0); return; }
+            officerField.setText(me.name);
+            officerField.setEditable(false);
+        }
         buildWindow();
         useGateway(m.venue());
         watchdog = new Watchdog(m);
         watchdog.start();
-        autosave.scheduleAtFixedRate(this::autosaveTick, 60, 60, java.util.concurrent.TimeUnit.SECONDS);
+        autosave.scheduleAtFixedRate(this::autosaveTick, App.AUTOSAVE_SECONDS, App.AUTOSAVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         m.addListener(new MonitorListener() {
             public void onChange() { scheduleRefresh(); }
             public void onAlert(Alert a) {
@@ -304,7 +314,7 @@ public class FxApp extends Application {
         officerField.setPrefWidth(150);
         Button checkIn = new Button("Check in");
         checkIn.getStyleClass().add("header-button");
-        checkIn.setOnAction(e -> act(m.officerCheckIn(officerField.getText())));
+        checkIn.setOnAction(e -> act(asOfficer(() -> m.officerCheckIn(officerField.getText()))));
         Region gap = new Region();
         HBox.setHgrow(gap, javafx.scene.layout.Priority.SOMETIMES);
         HBox h = new HBox(brand, new Label("|"), venueMenu, gap, search, theme, new HBox(2, alertsBtn, alertBadge), officerField, checkIn);
@@ -518,7 +528,7 @@ public class FxApp extends Application {
     private Node units() {
         CheckBox approved = new CheckBox("Supervisor approved (restricted areas)");
         approved.setMinWidth(Region.USE_PREF_SIZE);
-        Button move = button("Move", "btn", e -> act(m.moveUnit(selectedUnit, moveTo.getValue(), approved.isSelected())));
+        Button move = button("Move", "btn", e -> act(m.moveUnit(selectedUnit, moveTo.getValue(), approved.isSelected() ? approver() : null)));
         Button avail = button("Set AVAILABLE", "btn", e -> act(m.setUnitStatus(selectedUnit, UnitStatus.AVAILABLE)));
         Button off = button("Set OFF DUTY", "btn", e -> act(m.setUnitStatus(selectedUnit, UnitStatus.OFF_DUTY)));
         Button add = button("Add unit...", "btn", e -> addUnitDialog());
@@ -584,13 +594,13 @@ public class FxApp extends Application {
         evHelp.setWrapText(true);
         evHelp.getStyleClass().add("sub");
         Button start = button("Evacuate zone", "btn-danger", e -> {
-            if (confirm("Evacuate " + zonePick.getValue() + "? Every unit will be told.")) act(m.evacuate(zonePick.getValue(), officerField.getText()));
+            if (confirm("Evacuate " + zonePick.getValue() + "? Every unit will be told.")) act(asOfficer(() -> m.evacuate(zonePick.getValue(), officerField.getText())));
         });
-        Button end = button("End evacuation", "btn", e -> act(m.endEvacuation(officerField.getText())));
+        Button end = button("End evacuation", "btn", e -> act(asOfficer(() -> m.endEvacuation(officerField.getText()))));
         TextField bc = new TextField();
         bc.setPromptText("Message to every unit on duty");
         HBox.setHgrow(bc, javafx.scene.layout.Priority.ALWAYS);
-        Button send = button("Send to all units", "btn-primary", e -> act(m.broadcast(bc.getText(), officerField.getText())));
+        Button send = button("Send to all units", "btn-primary", e -> act(asOfficer(() -> m.broadcast(bc.getText(), officerField.getText()))));
         Button preview = button("Preview on map", "btn", e -> refresh());
         VBox evCard = card("Evacuation", evHelp, new HBox(8, new Label("Zone"), zonePick, start, end, preview), evacState, evacMapBox, planBox,
             sectionLabel("Message to all units"), new HBox(8, bc, send));
@@ -626,7 +636,7 @@ public class FxApp extends Application {
         TextField own = new TextField();
         own.setPromptText("Your own message for screens and the PA");
         HBox.setHgrow(own, javafx.scene.layout.Priority.ALWAYS);
-        Button ownSend = button("Send", "btn-primary", e -> { act(m.announce(own.getText(), officerField.getText())); own.clear(); });
+        Button ownSend = button("Send", "btn-primary", e -> { act(asOfficer(() -> m.announce(own.getText(), officerField.getText()))); own.clear(); });
         ComboBox<String> alarmArea = new ComboBox<>();
         alarmArea.setPromptText("Alarm at");
         alarmArea.setOnShowing(e -> { synchronized (m) { alarmArea.getItems().setAll(m.areaTree().keysInOrder().toArray(new String[0])); } });
@@ -687,7 +697,7 @@ public class FxApp extends Application {
             try { Files.writeString(f.toPath(), reportOut.getText()); say("Report saved to " + f); } catch (Exception ex) { say("Not saved: " + ex.getMessage()); }
         });
         Button h = button("Handover report", "btn", e -> { synchronized (m) { reportOut.setText(m.handoverReport()); } });
-        Button rc = button("Reset count check", "btn", e -> { if (confirm("Reset the count check? Only after a full recount: the total now becomes the new starting point.")) act(m.resetCountCheck(officerField.getText())); });
+        Button rc = button("Reset count check", "btn", e -> { if (confirm("Reset the count check? Only after a full recount: the total now becomes the new starting point.")) act(asOfficer(() -> m.resetCountCheck(officerField.getText()))); });
         return card("Reports (sorted with merge sort)", new FlowPane(8, 8, a, b, c, d, h, rc, x), reportOut);
     }
 
@@ -733,7 +743,7 @@ public class FxApp extends Application {
     /** Venue and server: settings of the venue, automation switch, network server control, save. */
     private Node settings() {
         automationBox.setOnAction(e -> {
-            Result in = m.officerCheckIn(officerField.getText());
+            Result in = asOfficer(() -> m.officerCheckIn(officerField.getText()));
             if (!in.ok) { automationBox.setSelected(m.automation()); act(in); return; }
             m.setAutomation(automationBox.isSelected());
             act(Result.ok("Automatic dispatch " + (automationBox.isSelected() ? "ON" : "OFF") + "."));
@@ -747,6 +757,7 @@ public class FxApp extends Application {
         scout.setPromptText("Scout key (optional)");
         CheckBox https = new CheckBox("HTTPS (encrypted)");
         Button start = button("Start server", "btn-primary", e -> {
+            if (!allowed(crowdwatch.net.Accounts.Role.OFFICER)) return;
             try {
                 if (api != null) api.stop();
                 boolean logins = accounts != null && accounts.hasUsers();
@@ -781,6 +792,7 @@ public class FxApp extends Application {
 
     /** Users and roles: lists the users and adds or changes one. */
     private void usersDialog() {
+        if (!allowed(crowdwatch.net.Accounts.Role.ADMIN)) return;
         if (accounts == null) { say("The accounts file cannot be read: " + App.ACCOUNTS_FILE.toAbsolutePath()); return; }
         StringBuilder list = new StringBuilder();
         for (crowdwatch.net.Accounts.User u : accounts.users()) list.append(u.name).append("  ").append(u.role).append(u.active ? "" : "  (switched off)").append('\n');
@@ -809,6 +821,7 @@ public class FxApp extends Application {
 
     /** Scout device codes: issues or cancels the code of one unit's phone. */
     private void deviceDialog() {
+        if (!allowed(crowdwatch.net.Accounts.Role.OFFICER)) return;
         if (accounts == null) { say("The accounts file cannot be read."); return; }
         ComboBox<String> unit = new ComboBox<>();
         synchronized (m) { unit.getItems().setAll(m.unitTree().keysInOrder().toArray(new String[0])); }
@@ -827,6 +840,7 @@ public class FxApp extends Application {
 
     /** Audit log: the newest entries from the venue's database (or from memory). */
     private void auditDialog() {
+        if (!allowed(crowdwatch.net.Accounts.Role.OFFICER)) return;
         String[] lines = null;
         Database d = db;
         if (d != null) try { lines = d.readAudit(300); } catch (Exception ignored) { }
@@ -917,8 +931,8 @@ public class FxApp extends Application {
             FlowPane actions = new FlowPane(6, 6);
             int id = i.id;
             if (i.automatic && i.reviewedBy == null && i.open()) actions.getChildren().addAll(
-                button("Confirm dispatch", "btn-primary", e -> act(m.review(id, officerField.getText(), true, ""))),
-                button("False alarm", "btn", e -> act(m.review(id, officerField.getText(), false, ""))));
+                button("Confirm dispatch", "btn-primary", e -> act(asOfficer(() -> m.review(id, officerField.getText(), true, "")))),
+                button("False alarm", "btn", e -> act(asOfficer(() -> m.review(id, officerField.getText(), false, "")))));
             if (i.open()) actions.getChildren().addAll(
                 button("Acknowledged by radio", "btn", e -> { Incident x = m.findIncident(id); act(x == null || x.unitId == null ? Result.fail("No unit assigned.") : m.acknowledge(x.unitId)); }),
                 button("On scene", "btn", e -> act(m.confirmOnScene(id))),
@@ -1349,9 +1363,19 @@ public class FxApp extends Application {
             String lv = a.restricted || a.staleSince != null || a.suspect != null ? "GRAY" : a.level.name();
             Color c = Vivid.color(lv);
             boolean hot = !a.restricted && a.level.compareTo(CrowdLevel.HIGH) >= 0, exit = v.exits.contains(a.id);
-            javafx.scene.shape.Rectangle r = new javafx.scene.shape.Rectangle(x, y, w, h);
-            r.setArcWidth(16);
-            r.setArcHeight(16);
+            String outline = v.shapeOf(a.id);
+            javafx.scene.shape.Shape r;
+            if (outline != null) {
+                javafx.scene.shape.Polygon poly = new javafx.scene.shape.Polygon();
+                for (String n : outline.trim().split("\\s+")) poly.getPoints().add(Double.parseDouble(n));
+                poly.setStrokeLineJoin(javafx.scene.shape.StrokeLineJoin.ROUND);
+                r = poly;
+            } else {
+                javafx.scene.shape.Rectangle rect = new javafx.scene.shape.Rectangle(x, y, w, h);
+                rect.setArcWidth(16);
+                rect.setArcHeight(16);
+                r = rect;
+            }
             r.setFill(Color.color(c.getRed(), c.getGreen(), c.getBlue(), a.restricted ? 0.12 : hot ? 0.45 : 0.26));
             r.setStroke(c);
             r.setStrokeWidth(hot ? 4 : 2);
@@ -1475,8 +1499,8 @@ public class FxApp extends Application {
             t.setWrapText(true);
             t.setStyle("-fx-font-weight: bold;");
             HBox.setHgrow(t, javafx.scene.layout.Priority.ALWAYS);
-            HBox row = new HBox(10, t, button("Start evacuation", "btn-danger", e -> act(m.decideProposal(true, officerField.getText()))),
-                button("Dismiss", "btn", e -> act(m.decideProposal(false, officerField.getText()))));
+            HBox row = new HBox(10, t, button("Start evacuation", "btn-danger", e -> act(asOfficer(() -> m.decideProposal(true, officerField.getText())))),
+                button("Dismiss", "btn", e -> act(asOfficer(() -> m.decideProposal(false, officerField.getText())))));
             row.setAlignment(Pos.CENTER_LEFT);
             row.getStyleClass().add("card");
             row.setStyle("-fx-border-color: #FF4D5E;");
@@ -1512,8 +1536,8 @@ public class FxApp extends Application {
         for (crowdwatch.core.AutoRules.Announcement a : m.pendingAnnouncements()) {
             int id = a.id;
             Label t = wrap("#" + a.id + "  " + a.text);
-            HBox row = new HBox(8, button("Approve and send", "btn-primary", e -> act(m.decideAnnouncement(id, true, officerField.getText()))),
-                button("Reject", "btn", e -> act(m.decideAnnouncement(id, false, officerField.getText()))));
+            HBox row = new HBox(8, button("Approve and send", "btn-primary", e -> act(asOfficer(() -> m.decideAnnouncement(id, true, officerField.getText())))),
+                button("Reject", "btn", e -> act(asOfficer(() -> m.decideAnnouncement(id, false, officerField.getText())))));
             signsBox.getChildren().add(new VBox(4, t, row));
         }
         if (signsBox.getChildren().isEmpty()) signsBox.getChildren().add(sub("No drafts waiting."));
@@ -1622,11 +1646,71 @@ public class FxApp extends Application {
         if (api != null) api.setAccounts(accounts);
     }
 
+    /** @return true if the signed-in user has the role (always true without users); says why not otherwise */
+    private boolean allowed(crowdwatch.net.Accounts.Role r) {
+        if (me == null || me.atLeast(r)) return true;
+        say("Needs " + (r == crowdwatch.net.Accounts.Role.ADMIN ? "an ADMIN" : "an OFFICER") + " sign-in: you are signed in as " + me.name + " (" + me.role + ").");
+        return false;
+    }
+
+    /** Runs an officer's decision only if the signed-in user is an OFFICER or ADMIN. */
+    private Result asOfficer(java.util.function.Supplier<Result> decision) {
+        if (me != null && !me.atLeast(crowdwatch.net.Accounts.Role.OFFICER))
+            return Result.fail("Needs an OFFICER sign-in: " + me.name + " is " + me.role + ".");
+        return decision.get();
+    }
+
+    /**
+     * Asks for a user name, password and (when needed) the authenticator code until they are right.
+     *
+     * @return the user, or null if cancelled
+     */
+    private crowdwatch.net.Accounts.Who signIn(String title, String action) {
+        TextField user = new TextField();
+        PasswordField pw = new PasswordField();
+        TextField code = new TextField();
+        Label codeLabel = new Label("Code from the authenticator app");
+        Label msg = new Label("");
+        msg.setStyle("-fx-text-fill: #FF4D5E;");
+        codeLabel.setVisible(false); codeLabel.setManaged(false); code.setVisible(false); code.setManaged(false);
+        while (true) {
+            GridPane g = new GridPane();
+            g.setHgap(8); g.setVgap(8);
+            g.addRow(0, new Label("User name"), user);
+            g.addRow(1, new Label("Password"), pw);
+            g.addRow(2, codeLabel, code);
+            Dialog<ButtonType> d = new Dialog<>();
+            d.setTitle(title);
+            d.getDialogPane().setContent(new VBox(10, g, msg));
+            d.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+            Platform.runLater(user.getText().isEmpty() ? user::requestFocus : pw::requestFocus);
+            if (d.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return null;
+            crowdwatch.net.Accounts.Who w = accounts.verify(user.getText().trim(), pw.getText(), code.isVisible() ? code.getText().trim() : null, m.now(), action);
+            if (w != null) return w;
+            crowdwatch.net.Accounts.User u = accounts.user(user.getText().trim());
+            if (u != null && u.twoStep() && !code.isVisible()) {
+                codeLabel.setVisible(true); codeLabel.setManaged(true); code.setVisible(true); code.setManaged(true);
+                msg.setText("Enter the code from your authenticator app.");
+            } else msg.setText("Wrong user name, password or code, or the account is locked.");
+            pw.clear();
+        }
+    }
+
+    /** Who approves entering a restricted area: the signed-in officer, or an officer signing in at this desk. */
+    private String approver() {
+        if (accounts == null || !accounts.hasUsers() || me == null) return "supervisor";
+        if (me.atLeast(crowdwatch.net.Accounts.Role.OFFICER)) return me.name;
+        crowdwatch.net.Accounts.Who w = signIn("Officer approval for a restricted area", "approval");
+        if (w == null) return null;
+        if (!w.atLeast(crowdwatch.net.Accounts.Role.OFFICER)) { say(w.name + " is not an officer: approval refused."); return null; }
+        return w.name;
+    }
+
     /** Shows the result of an action, writes it to the audit log (role DESKTOP) and refreshes. */
     private void act(Result r) {
         if (accounts != null) {
-            String who = officerField.getText().isBlank() ? (m.officer() == null ? "desktop" : m.officer()) : officerField.getText().trim();
-            accounts.record(m.now(), who, "DESKTOP", "desktop", r.message, r.ok);
+            String who = me != null ? me.name : officerField.getText().isBlank() ? (m.officer() == null ? "desktop" : m.officer()) : officerField.getText().trim();
+            accounts.record(m.now(), who, me != null ? me.role.name() : "DESKTOP", "desktop", r.message, r.ok);
         }
         say((r.ok ? "" : "Refused: ") + r.message);
         refresh();
@@ -1673,6 +1757,8 @@ public class FxApp extends Application {
 
     /** Connects the venue's radio gateway, replacing the previous one. */
     private void useGateway(VenueProfile p) {
+        crowdwatch.feed.Feeds.stopAll(feeds);
+        feeds = p == null ? null : crowdwatch.feed.Feeds.start(m, p.feeds, t -> Platform.runLater(() -> say(t)));
         if (gateway != null) m.removeChannel(gateway);
         gateway = p != null && p.gateway != null ? new crowdwatch.net.HttpGatewayChannel(p.gateway) : null;
         if (gateway != null) m.addChannel(gateway);

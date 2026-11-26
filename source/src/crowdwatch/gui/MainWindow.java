@@ -84,6 +84,11 @@ public class MainWindow extends JFrame {
     private final JLabel proposalState = new JLabel(" "), countState = new JLabel(" ");
     // logins, device codes and the audit log (shared with the network server); null if the accounts file cannot be read
     private crowdwatch.net.Accounts accounts;
+    // the signed-in user (null when no users exist); controls above their role are switched off
+    private crowdwatch.net.Accounts.Who me;
+    // the venue's sensor connections (feed: lines)
+    private crowdwatch.ds.LinkedList<crowdwatch.feed.CrowdFeed> feeds;
+    private final java.util.List<JComponent> officerOnly = new java.util.ArrayList<>(), adminOnly = new java.util.ArrayList<>();
     // checks officer check-ins and unit acknowledgements every 15 s
     private final Watchdog watchdog;
     // radio gateway of the current venue, or null
@@ -100,6 +105,12 @@ public class MainWindow extends JFrame {
         this.m = monitor;
         this.db = db;
         openAccounts();
+        if (accounts != null && accounts.hasUsers()) {
+            me = SignIn.ask(null, accounts, "CrowdWatch - sign in", "desktop sign-in", m::now);
+            if (me == null) System.exit(0);
+            officerName.setText(me.name);
+            officerName.setEditable(false);
+        }
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() { public void windowClosing(WindowEvent e) { exit(); } });
         setJMenuBar(menu());
@@ -130,11 +141,24 @@ public class MainWindow extends JFrame {
         });
         setSize(1280, 800);
         setLocationRelativeTo(null);
-        autosave.scheduleAtFixedRate(this::autosaveTick, 60, 60, java.util.concurrent.TimeUnit.SECONDS);
+        autosave.scheduleAtFixedRate(this::autosaveTick, App.AUTOSAVE_SECONDS, App.AUTOSAVE_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         watchdog = new Watchdog(m);
         watchdog.start();
         useGateway(m.venue());
         venueChanged();
+        applyRole();
+    }
+
+    /** Marks a control as needing the OFFICER role. @return the control */
+    private <T extends JComponent> T officer(T c) { officerOnly.add(c); return c; }
+
+    /** Switches off the controls the signed-in user's role may not use (an operator enters data; officers decide). */
+    private void applyRole() {
+        if (me == null) return;
+        boolean officer = me.atLeast(crowdwatch.net.Accounts.Role.OFFICER), admin = me.atLeast(crowdwatch.net.Accounts.Role.ADMIN);
+        String tip = "Needs an OFFICER sign-in";
+        for (JComponent c : officerOnly) { c.setEnabled(officer); if (!officer) c.setToolTipText(tip); }
+        for (JComponent c : adminOnly) { c.setEnabled(admin); if (!admin) c.setToolTipText("Needs an ADMIN sign-in"); }
     }
 
     /**
@@ -152,9 +176,9 @@ public class MainWindow extends JFrame {
         JMenuBar bar = new JMenuBar();
         JMenu file = new JMenu("File");
         file.add(item("Save to database", this::save));
-        file.add(item("Reset venue to its sample data", () -> {
+        file.add(officer(item("Reset venue to its sample data", () -> {
             if (confirm("Replace all current data with the venue's sample data?")) { m.loadVenue(m.venue(), true); venueChanged(); show(Result.ok("Sample data reloaded.")); }
-        }));
+        })));
         file.addSeparator();
         file.add(item("Exit", this::exit));
         JMenu venue = new JMenu("Venue");
@@ -167,7 +191,7 @@ public class MainWindow extends JFrame {
             catch (Exception ex) { show(Result.fail("Venue file not loaded: " + ex.getMessage())); }
         }));
         JMenu net = new JMenu("Network");
-        net.add(item("Start server for other terminals...", () -> {
+        net.add(officer(item("Start server for other terminals...", () -> {
             String port = JOptionPane.showInputDialog(this, "Port for the web dashboard and API:", "8080");
             if (port == null) return;
             String key = JOptionPane.showInputDialog(this, "Control key for the dashboard and API (leave empty for an open demo server):", "");
@@ -183,12 +207,14 @@ public class MainWindow extends JFrame {
                 show(Result.ok("Server running: other terminals open " + (https ? "https" : "http") + "://<this-computer>:" + p + "/  (API under /api/...)"
                     + (accounts != null && accounts.hasUsers() ? "  - personal logins on" : "")));
             } catch (Exception ex) { show(Result.fail("Server not started: " + ex.getMessage())); }
-        }));
+        })));
         net.add(item("Stop server", () -> { if (api != null) api.stop(); api = null; show(Result.ok("Server stopped.")); }));
         net.addSeparator();
-        net.add(item("Users and roles...", this::usersDialog));
-        net.add(item("Scout device codes...", this::deviceDialog));
-        net.add(item("Audit log...", this::auditDialog));
+        JMenuItem usersItem = item("Users and roles...", this::usersDialog);
+        adminOnly.add(usersItem);
+        net.add(usersItem);
+        net.add(officer(item("Scout device codes...", this::deviceDialog)));
+        net.add(officer(item("Audit log...", this::auditDialog)));
         bar.add(file);
         bar.add(venue);
         bar.add(net);
@@ -243,7 +269,7 @@ public class MainWindow extends JFrame {
      */
     @SuppressWarnings("unchecked")
     private void venueChangedNow() {
-        title.setText((db == null ? "[NOT SAVED - memory only]   " : "") + m.venueName() + "   |   " + m.areaTree().size() + " areas, " + m.map().edgeCount() + " links, thresholds "
+        title.setText((db == null ? "[NOT SAVED - memory only]   " : "") + (me == null ? "" : me.name + " (" + me.role + ")   |   ") + m.venueName() + "   |   " + m.areaTree().size() + " areas, " + m.map().edgeCount() + " links, thresholds "
             + m.thresholds()[0] + "/" + m.thresholds()[1] + "/" + m.thresholds()[2] + "%");
         String[] ids = m.areaTree().keysInOrder().toArray(new String[0]);
         for (JComboBox<String> c : new JComboBox[] { areaPick, levelArea, unitArea, moveArea, incArea, routeFrom, routeTo }) c.setModel(new DefaultComboBoxModel<>(ids));
@@ -277,7 +303,8 @@ public class MainWindow extends JFrame {
     private JPanel operations() {
         JPanel p = pad(new JPanel(new BorderLayout(10, 10)));
         JPanel side = column();
-        JButton checkIn = new JButton("Check in");
+        JButton checkIn = officer(new JButton("Check in"));
+        officer(automationBox);
         checkIn.addActionListener(e -> act(m.officerCheckIn(officerName.getText())));
         automationBox.addActionListener(e -> {
             Result in = m.officerCheckIn(officerName.getText());
@@ -289,7 +316,7 @@ public class MainWindow extends JFrame {
 
         reviewList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         reviewList.setVisibleRowCount(4);
-        JButton confirm = new JButton("Confirm"), falseAlarm = new JButton("False alarm");
+        JButton confirm = officer(new JButton("Confirm")), falseAlarm = officer(new JButton("False alarm"));
         confirm.addActionListener(e -> reviewSelected(true));
         falseAlarm.addActionListener(e -> reviewSelected(false));
         JPanel rb = new JPanel(new GridLayout(1, 2, 6, 0));
@@ -306,7 +333,7 @@ public class MainWindow extends JFrame {
         sos.addActionListener(e -> act(m.sos(sel(sosArea), null, sosText.getText())));
         side.add(form("SOS - person in danger", new String[] { "Area", "What is happening" }, new JComponent[] { sosArea, sosText }, sos));
 
-        JButton evac = new JButton("Evacuate"), endEvac = new JButton("End evacuation");
+        JButton evac = officer(new JButton("Evacuate")), endEvac = officer(new JButton("End evacuation"));
         evac.addActionListener(e -> { if (confirm("Evacuate " + sel(zonePick) + "? Every unit will be told.")) act(m.evacuate(sel(zonePick), officerName.getText())); });
         endEvac.addActionListener(e -> act(m.endEvacuation(officerName.getText())));
         JPanel eb = new JPanel(new GridLayout(1, 2, 6, 0));
@@ -314,7 +341,7 @@ public class MainWindow extends JFrame {
         side.add(form("Evacuation", new String[] { "Zone (sector or area)" }, new JComponent[] { zonePick }, eb));
 
         JTextField bc = new JTextField();
-        JButton send = new JButton("Send to all units");
+        JButton send = officer(new JButton("Send to all units"));
         send.addActionListener(e -> act(m.broadcast(bc.getText(), officerName.getText())));
         side.add(form("Message to all units", new String[] { "Text" }, new JComponent[] { bc }, send));
 
@@ -334,7 +361,7 @@ public class MainWindow extends JFrame {
         foundOther.addActionListener(e -> act(m.foundPerson(sel(foundArea), foundText.getText(), "", officerName.getText())));
         more.add(form("Lost persons - still missing", new String[] { "", "Found in area", "Found person (if no case)" }, new JComponent[] { ls, foundArea, foundText }, stack(found, foundOther)));
 
-        JButton startProposed = new JButton("Start evacuation"), dismiss = new JButton("Dismiss");
+        JButton startProposed = officer(new JButton("Start evacuation")), dismiss = officer(new JButton("Dismiss"));
         startProposed.addActionListener(e -> { if (confirm("Start the proposed evacuation? Every unit will be told.")) act(m.decideProposal(true, officerName.getText())); });
         dismiss.addActionListener(e -> act(m.decideProposal(false, officerName.getText())));
         JPanel pb = new JPanel(new GridLayout(1, 2, 6, 0));
@@ -351,7 +378,7 @@ public class MainWindow extends JFrame {
         JScrollPane as = scroll(annList);
         as.setPreferredSize(new Dimension(240, 70));
         as.setMinimumSize(new Dimension(200, 70));
-        JButton approve = new JButton("Approve"), reject = new JButton("Reject"), announce = new JButton("Show on public screens now");
+        JButton approve = officer(new JButton("Approve")), reject = officer(new JButton("Reject")), announce = officer(new JButton("Show on public screens now"));
         approve.addActionListener(e -> decideAnnouncement(true));
         reject.addActionListener(e -> decideAnnouncement(false));
         JTextField annText = new JTextField();
@@ -361,7 +388,7 @@ public class MainWindow extends JFrame {
         more.add(form("Public messages (signs and PA)", new String[] { "Drafts", "", "Own message" }, new JComponent[] { as, ab, annText }, announce));
 
         JTextField moveCount = new JTextField("1");
-        JButton move = new JButton("Record movement"), resetCount = new JButton("Reset count check after a recount");
+        JButton move = new JButton("Record movement"), resetCount = officer(new JButton("Reset count check after a recount"));
         move.addActionListener(e -> {
             try { act(m.movePeople(sel(countFrom), sel(countTo), Integer.parseInt(moveCount.getText().trim()), Source.STAFF)); }
             catch (NumberFormatException ex) { show(Result.fail("People must be a whole number.")); }
@@ -454,6 +481,8 @@ public class MainWindow extends JFrame {
 
     /** Connects the venue's radio gateway (its {@code gateway:} line), replacing the previous one. */
     private void useGateway(VenueProfile p) {
+        crowdwatch.feed.Feeds.stopAll(feeds);
+        feeds = p == null ? null : crowdwatch.feed.Feeds.start(m, p.feeds, s -> SwingUtilities.invokeLater(() -> show(s.contains("not started") ? Result.fail(s) : Result.ok(s))));
         if (gateway != null) m.removeChannel(gateway);
         gateway = p != null && p.gateway != null ? new crowdwatch.net.HttpGatewayChannel(p.gateway) : null;
         if (gateway != null) m.addChannel(gateway);
@@ -554,7 +583,7 @@ public class MainWindow extends JFrame {
         JTextField uid = new JTextField();
         JCheckBox approved = new JCheckBox("Supervisor approved (restricted areas)");
         JButton move = new JButton("Move");
-        move.addActionListener(e -> act(m.moveUnit(target(uid), sel(moveArea), approved.isSelected())));
+        move.addActionListener(e -> act(m.moveUnit(target(uid), sel(moveArea), approved.isSelected() ? SignIn.approver(this, accounts, me, m::now) : null)));
         JComboBox<UnitStatus> st = new JComboBox<>(new UnitStatus[] { UnitStatus.AVAILABLE, UnitStatus.OFF_DUTY });
         JButton setSt = new JButton("Set status");
         setSt.addActionListener(e -> act(m.setUnitStatus(target(uid), (UnitStatus) st.getSelectedItem())));
@@ -797,8 +826,8 @@ public class MainWindow extends JFrame {
      */
     private void act(Result r) {
         if (accounts != null) {
-            String who = officerName.getText().isBlank() ? (m.officer() == null ? "desktop" : m.officer()) : officerName.getText().trim();
-            accounts.record(m.now(), who, "DESKTOP", "desktop", r.message, r.ok);
+            String who = me != null ? me.name : officerName.getText().isBlank() ? (m.officer() == null ? "desktop" : m.officer()) : officerName.getText().trim();
+            accounts.record(m.now(), who, me != null ? me.role.name() : "DESKTOP", "desktop", r.message, r.ok);
         }
         show(r);
         refresh();
