@@ -8,18 +8,27 @@ import AreasIcon from '@mui/icons-material/HexagonOutlined';
 import IncidentsIcon from '@mui/icons-material/ReportProblemOutlined';
 import UnitsIcon from '@mui/icons-material/GroupsOutlined';
 import AlertsIcon from '@mui/icons-material/NotificationsNoneOutlined';
-import MoreIcon from '@mui/icons-material/OpenInNew';
+import LostIcon from '@mui/icons-material/PersonSearchOutlined';
+import EmergencyIcon from '@mui/icons-material/CampaignOutlined';
+import ReportsIcon from '@mui/icons-material/BarChartOutlined';
+import ReplayIcon from '@mui/icons-material/HistoryOutlined';
+import SitesIcon from '@mui/icons-material/ApartmentOutlined';
+import EditorIcon from '@mui/icons-material/EditOutlined';
+import SettingsIcon from '@mui/icons-material/SettingsOutlined';
+import SosIcon from '@mui/icons-material/Sos';
 import MenuIcon from '@mui/icons-material/Menu';
 import DarkIcon from '@mui/icons-material/DarkModeOutlined';
 import LightIcon from '@mui/icons-material/LightModeOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useTranslation } from 'react-i18next';
-import { setPref } from '../api/client';
+import { can, setPref } from '../api/client';
 import { LiveContext } from '../api/live';
 import { useOverview } from '../api/queries';
+import { SosDialog } from './Dialogs';
 import { useAction } from './ui';
 
-export type View = 'overview' | 'areas' | 'incidents' | 'units' | 'alerts';
+export type View = 'overview' | 'areas' | 'incidents' | 'units' | 'lost' | 'emergency' | 'alerts' | 'reports' | 'replay' | 'sites' | 'editor' | 'settings';
+export const VIEWS: View[] = ['overview', 'areas', 'incidents', 'units', 'lost', 'emergency', 'alerts', 'reports', 'replay', 'sites', 'editor', 'settings'];
 
 /** Theme mode, shared by the header button and the app. */
 export const ModeContext = createContext<{ mode: 'light' | 'dark'; toggle: () => void }>({ mode: 'dark', toggle: () => {} });
@@ -44,13 +53,26 @@ export function LanguageButton() {
   );
 }
 
-const NAV: { view: View; label: string; icon: ReactNode }[] = [
-  { view: 'overview', label: 'Overview', icon: <DashboardIcon /> },
-  { view: 'areas', label: 'Areas and crowd', icon: <AreasIcon /> },
-  { view: 'incidents', label: 'Incidents', icon: <IncidentsIcon /> },
-  { view: 'units', label: 'Units and scouts', icon: <UnitsIcon /> },
-  { view: 'alerts', label: 'Alerts', icon: <AlertsIcon /> },
-];
+type NavItem = { view: View; label: string; icon: ReactNode; badge?: number | string | null; color?: 'error' | 'warning' | 'secondary' | 'info' };
+
+/** The menu: everyone sees the live views; reports for officers, the editor for administrators, sites only for a head office. */
+function navItems(o: ReturnType<typeof useOverview>['data']): NavItem[] {
+  const items: NavItem[] = [
+    { view: 'overview', label: 'Overview', icon: <DashboardIcon /> },
+    { view: 'areas', label: 'Areas and crowd', icon: <AreasIcon />, badge: o ? o.levels.CRITICAL || null : null, color: 'error' },
+    { view: 'incidents', label: 'Incidents', icon: <IncidentsIcon />, badge: o?.incidents.open || null, color: o?.incidents.CRITICAL ? 'error' : 'info' },
+    { view: 'units', label: 'Units and scouts', icon: <UnitsIcon />, badge: o?.units.UNREACHABLE || null, color: 'error' },
+    { view: 'lost', label: 'Lost persons', icon: <LostIcon />, badge: o?.lost || null, color: 'secondary' },
+    { view: 'emergency', label: 'SOS and evacuation', icon: <EmergencyIcon />, badge: o?.evacuation || o?.proposal ? '!' : o?.signs || null, color: o?.evacuation || o?.proposal ? 'error' : 'warning' },
+    { view: 'alerts', label: 'Alerts', icon: <AlertsIcon /> },
+  ];
+  if (can('OFFICER')) items.push({ view: 'reports', label: 'Reports', icon: <ReportsIcon /> });
+  items.push({ view: 'replay', label: 'Replay', icon: <ReplayIcon /> });
+  if (o?.sites) items.push({ view: 'sites', label: 'Sites', icon: <SitesIcon /> });
+  if (can('ADMIN')) items.push({ view: 'editor', label: 'Venue editor', icon: <EditorIcon /> });
+  items.push({ view: 'settings', label: 'Venue settings', icon: <SettingsIcon /> });
+  return items;
+}
 const NAV_WIDTH = 240;
 
 function LiveBadge() {
@@ -74,12 +96,12 @@ function Banners({ onView }: { onView: (v: View) => void }) {
       {isError && <Alert severity="error">{t('The server is not answering. The figures below are from the last good update.')}</Alert>}
       {o?.drill && <Alert severity="info" variant="filled">{t('DRILL - training server: nothing here is real, nothing is saved, the real venue is not affected.')}</Alert>}
       {o?.evacuation && (
-        <Alert severity="error" variant="filled" action={<Button color="inherit" size="small" href="/legacy">{t('Open in the classic console')}</Button>}>
+        <Alert severity="error" variant="filled" action={<Button color="inherit" size="small" onClick={() => onView('emergency')}>{t('Open plan')}</Button>}>
           {t('EVACUATION of {{zone}} in progress. Public routes avoid the zone.', { zone: o.evacuation })}
         </Alert>
       )}
       {o?.proposal && (
-        <Alert severity="warning" action={<Button color="inherit" size="small" href="/legacy">{t('Open in the classic console')}</Button>}>
+        <Alert severity="warning" action={<Button color="inherit" size="small" onClick={() => onView('emergency')}>{t('Decide now')}</Button>}>
           {t('EVACUATION PROPOSED for {{zone}}: {{reason}}. You decide.', { zone: o.proposal.zone, reason: o.proposal.reason })}
         </Alert>
       )}
@@ -105,27 +127,30 @@ export function Shell({ view, onView, onSignOut, children }: { view: View; onVie
   const { mode, toggle } = useContext(ModeContext);
   const { data: o } = useOverview();
   const checkin = useAction('/api/checkin');
-  const openIncidents = o?.incidents.open ?? 0;
+  const [sos, setSos] = useState(false);
+  const items = navItems(o);
 
   const nav = (
     <Box sx={{ width: NAV_WIDTH, pt: 1 }} role="navigation">
       <List>
-        {NAV.map((n) => (
+        {items.map((n) => (
           <ListItemButton key={n.view} selected={view === n.view} onClick={() => { onView(n.view); setOpen(false); }} sx={{ mx: 1, borderRadius: 2 }}>
             <ListItemIcon sx={{ minWidth: 40 }}>
-              {n.view === 'incidents' ? <Badge color="error" badgeContent={openIncidents} max={99}>{n.icon}</Badge> : n.icon}
+              <Badge color={n.color ?? 'info'} badgeContent={n.badge ?? 0} max={99}>{n.icon}</Badge>
             </ListItemIcon>
             <ListItemText primary={t(n.label)} />
           </ListItemButton>
         ))}
       </List>
       <Divider sx={{ my: 1 }} />
-      <List>
-        <ListItemButton component="a" href="/legacy" sx={{ mx: 1, borderRadius: 2 }}>
-          <ListItemIcon sx={{ minWidth: 40 }}><MoreIcon /></ListItemIcon>
-          <ListItemText primary={t('More in the classic console')} secondary={t('Lost persons, evacuation, reports, replay, editor, users and settings')} />
-        </ListItemButton>
-      </List>
+      {o && (
+        <Stack spacing={0.5} sx={{ px: 3, pb: 2 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>{t('System')}</Typography>
+          <Typography variant="caption">{t('{{n}} of {{m}} devices online', { n: o.units.online, m: o.units.total })}</Typography>
+          <Typography variant="caption">{t(o.automation ? 'Automatic dispatch ON' : 'Automatic dispatch OFF')}</Typography>
+          <Typography variant="caption">{t('{{n}} archived incidents', { n: o.archived })}</Typography>
+        </Stack>
+      )}
     </Box>
   );
 
@@ -142,6 +167,9 @@ export function Shell({ view, onView, onSignOut, children }: { view: View; onVie
           <LiveBadge />
           {o?.drill && <Chip size="small" color="info" label="DRILL" />}
           <Box sx={{ flex: 1 }} />
+          {can('OPERATOR') && (
+            <Button color="error" variant="contained" startIcon={<SosIcon />} onClick={() => setSos(true)} sx={{ fontWeight: 800 }}>{wide ? t('SOS') : ''}</Button>
+          )}
           {wide && <LanguageButton />}
           <Tooltip title={t(mode === 'dark' ? 'Light' : 'Dark')}>
             <IconButton onClick={toggle} aria-label={t(mode === 'dark' ? 'Light' : 'Dark')}>{mode === 'dark' ? <LightIcon /> : <DarkIcon />}</IconButton>
@@ -167,6 +195,7 @@ export function Shell({ view, onView, onSignOut, children }: { view: View; onVie
         <Banners onView={onView} />
         <Box sx={{ p: { xs: 2, md: 3 } }}>{children}</Box>
       </Box>
+      <SosDialog open={sos} onClose={() => setSos(false)} onSent={() => onView('incidents')} />
     </Box>
   );
 }

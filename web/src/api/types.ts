@@ -159,16 +159,183 @@ export interface Alert {
   text: string;
 }
 
+export interface VenueRules {
+  stale: number;
+  jump: number;
+  onscene: number;
+  autoclose: number;
+  maxwait: number;
+  preposition: number;
+  holdflow: boolean;
+  cover: boolean;
+  propose: number;
+  signs: boolean;
+  reinforceHigh: number;
+  reinforceCritical: number;
+  reinforceHold: number;
+  reinforceMax: number;
+  reinforceSkills: string[];
+  meeting: string | null;
+  lostRadius: number;
+  lostWiden: number;
+  events: { time: string; minutes: number; zone: string; name: string }[];
+  shifts: string[];
+}
+
 export interface Venue {
   name: string;
   code: string;
   thresholds: [number, number, number];
+  auto: { category: string; level: string; trend: boolean } | null;
+  supervisionMinutes: number;
+  ackMinutes: number;
+  archiveMinutes: number;
+  gateway: boolean;
   automation: boolean;
   categories: { code: string; label: string; priority: Priority; skill: string | null }[];
   sectors: string[];
   areas: string[];
   exits: string[];
   fireZones: string[];
+  rules: VenueRules;
+}
+
+/** The venue drawing and where each area is on it ("map" is false without a layout). */
+export interface Layout {
+  map: boolean;
+  image?: boolean;
+  w: number;
+  h: number;
+  scale?: number;
+  areas: {
+    id: string; x: number; y: number; w: number; h: number; shape?: number[];
+    level: Level; pct: number; restricted: boolean; evacuating: boolean; exit: boolean; flow: number; zone: string | null;
+  }[];
+  links: { a: string; b: string; capacity: number; lift: boolean }[];
+  zones: string[];
+}
+
+export interface EvacuationRow {
+  from: string;
+  exit: string;
+  path: string;
+  min: string;
+  inZone: boolean;
+  people: string;
+  clear: string;
+}
+
+export interface Evacuation {
+  active: string | null;
+  zone: string | null;
+  rows: EvacuationRow[];
+  clearMinutes: number;
+}
+
+export interface LostCase {
+  id: number;
+  details: string;
+  area: string;
+  areaName: string;
+  priority: Priority;
+  status: IncidentStatus;
+  unit: string | null;
+  minutes: number;
+  reported: string;
+  contact: string | null;
+  language: string | null;
+  found: boolean;
+  foundWhere: string | null;
+  foundBy: string | null;
+  search: string[];
+  radius: number;
+  meeting: string | null;
+}
+
+export interface Announcement {
+  id: number;
+  time: string;
+  ref: string | null;
+  text: string;
+  status: 'PROPOSED' | 'APPROVED' | 'REJECTED' | string;
+  by: string | null;
+}
+
+export interface Message {
+  id: number;
+  time: string;
+  unit: string;
+  fromUnit: boolean;
+  by: string | null;
+  incident: number;
+  text: string;
+  photo: boolean;
+}
+
+export interface ReportData {
+  venue: string;
+  from: string;
+  to: string;
+  frames: number;
+  areas: { id: string; name: string; peak: number; peakPct: number; peakAt: string; busiestHour: string; busiestPct: number }[];
+  hourly: number[];
+  days: { day: string; incidents: number }[];
+  categories: { category: string; incidents: number; sceneMedian: number }[];
+  incidents: number;
+  automatic: number;
+  acknowledged: number;
+  onScene: number;
+  ackMedian: number;
+  ackP90: number;
+  sceneMedian: number;
+  sceneP90: number;
+  overdue: number;
+  noAnswer: number;
+  sos: number;
+}
+
+/** One minute of a replay: each area's people and level. */
+export interface ReplayFrame {
+  t: string;
+  areas: Record<string, [number, Level]>;
+}
+
+export interface Replay {
+  from: string;
+  to: string;
+  frames: ReplayFrame[];
+  alerts: { time: string; kind: string; text: string }[];
+}
+
+export interface Site {
+  name: string;
+  url: string;
+  ok: boolean;
+  problem: string | null;
+  overview: Overview | null;
+}
+
+export interface PrivacyResult {
+  find: string;
+  incidents: { id: number; category: string; area: string; reported: string | null; details: string | null; contact: string | null; where: string }[];
+  messages: { id: number; time: string; unit: string; incident: number; text: string; photo: boolean }[];
+}
+
+export interface User {
+  name: string;
+  role: Role;
+  active: boolean;
+  twoStep: boolean;
+  directory: boolean;
+}
+
+export interface AuditEntry {
+  time: string;
+  user: string;
+  role: string;
+  action: string;
+  summary: string;
+  ok: boolean;
 }
 
 export interface Readings {

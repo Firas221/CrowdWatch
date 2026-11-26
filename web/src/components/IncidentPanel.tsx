@@ -4,6 +4,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useTranslation } from 'react-i18next';
 import { can } from '../api/client';
 import { useIncident, useUnits } from '../api/queries';
+import { FoundDialog } from './Dialogs';
+import { Messages } from './Messages';
 import { StateChip, useAction } from './ui';
 import { PRIORITY_COLOR, STATUS_COLOR } from '../theme';
 
@@ -15,6 +17,7 @@ export function IncidentPanel({ id, onClose }: { id: number; onClose: () => void
   const [note, setNote] = useState('');
   const [unit, setUnit] = useState('');
   const [reason, setReason] = useState('');
+  const [found, setFound] = useState(false);
   const onscene = useAction('/api/onscene');
   const escalate = useAction('/api/escalate');
   const review = useAction('/api/review');
@@ -46,6 +49,10 @@ export function IncidentPanel({ id, onClose }: { id: number; onClose: () => void
             <Typography variant="body2" color="text.secondary">{t('Route of the unit')}</Typography><Typography variant="body2">{i.route}</Typography>
             {i.details && <><Typography variant="body2" color="text.secondary">{t('Details')}</Typography><Typography variant="body2">{i.details}</Typography></>}
             {i.contact && <><Typography variant="body2" color="text.secondary">{t('Contact')}</Typography><Typography variant="body2">{i.contact}{i.language ? ` (${i.language})` : ''}</Typography></>}
+            {i.lost && <><Typography variant="body2" color="text.secondary">{t('Lost person')}</Typography>
+              <Typography variant="body2">{i.foundWhere ? <b>{t('FOUND at {{where}} by {{by}}', { where: i.foundWhere, by: i.foundBy })}</b> : <><b>{t('MISSING')}</b> - {t('search')} {i.search.join(', ')}</>}</Typography>
+              <Typography variant="body2" color="text.secondary">{t('Meeting point')}</Typography><Typography variant="body2">{i.meeting ?? '-'}</Typography></>}
+            {i.automatic && <><Typography variant="body2" color="text.secondary">{t('Review')}</Typography><Typography variant="body2">{i.reviewedBy ? t('reviewed by {{name}}', { name: i.reviewedBy }) : t('awaiting an officer')}</Typography></>}
           </Box>
 
           {i.open && can('OFFICER') && i.automatic && !i.reviewedBy && (
@@ -63,6 +70,7 @@ export function IncidentPanel({ id, onClose }: { id: number; onClose: () => void
               <Stack direction="row" spacing={1}>
                 {i.status === 'ASSIGNED' && <Button variant="outlined" disabled={onscene.isPending} onClick={() => onscene.mutate({ id })}>{t('Mark on scene')}</Button>}
                 <Button variant="outlined" color="warning" disabled={escalate.isPending} onClick={() => escalate.mutate({ id })}>{t('Escalate')}</Button>
+                {i.lost && !i.foundWhere && <Button variant="contained" color="success" onClick={() => setFound(true)}>{t('Person found...')}</Button>}
               </Stack>
               <Stack component="form" direction="row" spacing={1} onSubmit={(e) => { e.preventDefault(); reassign.mutate({ id, unit, reason: reason || 'reassigned in the web console' }); }}>
                 <TextField select size="small" label={t('Reassign to')} value={unit} onChange={(e) => setUnit(e.target.value)} required sx={{ flex: 1 }}>
@@ -81,6 +89,8 @@ export function IncidentPanel({ id, onClose }: { id: number; onClose: () => void
           )}
 
           <Divider />
+          <Messages unit={i.unit} incident={id} />
+          <Divider />
           <Typography variant="subtitle2">{t('History')}</Typography>
           <Stack spacing={1}>
             {i.history.slice().reverse().map((h, k) => (
@@ -92,6 +102,7 @@ export function IncidentPanel({ id, onClose }: { id: number; onClose: () => void
           </Stack>
         </Stack>
       )}
+      <FoundDialog id={found ? id : null} onClose={() => setFound(false)} />
     </Box>
   );
 }

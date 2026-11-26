@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Box, Card, CardActionArea, CardContent, MenuItem, Skeleton, Stack, TextField, Typography } from '@mui/material';
+import { Box, Button, Card, CardActionArea, CardActions, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Skeleton, Stack, TextField, Typography } from '@mui/material';
 import BatteryIcon from '@mui/icons-material/Battery5Bar';
 import { useTranslation } from 'react-i18next';
 import { useUnits } from '../api/queries';
 import type { UnitStatus } from '../api/types';
+import { Messages } from '../components/Messages';
 import { StateChip } from '../components/ui';
 import { PRIORITY_COLOR, UNIT_COLOR } from '../theme';
 
@@ -13,6 +14,7 @@ export function Units({ onIncident }: { onIncident: (id: number) => void }) {
   const { t } = useTranslation();
   const { data: units, isLoading } = useUnits();
   const [status, setStatus] = useState<UnitStatus | ''>('');
+  const [talk, setTalk] = useState<string | null>(null);
   const shown = useMemo(() => (units ?? []).filter((u) => !status || u.status === status), [units, status]);
   return (
     <Stack spacing={2}>
@@ -59,10 +61,20 @@ export function Units({ onIncident }: { onIncident: (id: number) => void }) {
                 ) : <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{t('No task')}{u.staged ? ` · ${u.staged}` : ''}{u.reinforcing ? ` · ${u.reinforcing}` : ''}</Typography>}
               </CardContent>
             );
-            return <Card key={u.id}>{u.task ? <CardActionArea onClick={() => onIncident(u.task!.id)}>{body}</CardActionArea> : body}</Card>;
+            return (
+              <Card key={u.id}>
+                {u.task ? <CardActionArea onClick={() => onIncident(u.task!.id)}>{body}</CardActionArea> : body}
+                <CardActions sx={{ pt: 0 }}><Button size="small" onClick={() => setTalk(u.id)}>{t('Messages')}</Button></CardActions>
+              </Card>
+            );
           })}
         </Box>
       )}
+      <Dialog open={talk != null} onClose={() => setTalk(null)} fullWidth maxWidth="sm">
+        <DialogTitle>{t('Messages with {{unit}}', { unit: talk })}</DialogTitle>
+        <DialogContent>{talk && <Messages unit={talk} />}</DialogContent>
+        <DialogActions><Button onClick={() => setTalk(null)}>{t('Close')}</Button></DialogActions>
+      </Dialog>
     </Stack>
   );
 }

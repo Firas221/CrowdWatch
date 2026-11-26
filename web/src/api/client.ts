@@ -115,3 +115,43 @@ export function liveUrl(s: Session = session): string {
   const q = s.token ? 'token=' + encodeURIComponent(s.token) : s.key ? 'key=' + encodeURIComponent(s.key) : '';
   return proto + '//' + location.host + '/ws' + (q ? '?' + q : '');
 }
+
+/** GET a file (image, CSV, text) with the sign-in. */
+export async function getBlob(path: string): Promise<Blob> {
+  const r = await fetch(path, { headers: authHeaders() });
+  if (r.status === 401) { onSignedOut('Your session has ended - please sign in again.'); throw new ApiError('Signed out', 401); }
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { msg = (JSON.parse(await r.text()) as { message?: string }).message ?? msg; } catch { /* not JSON */ }
+    throw new ApiError(msg, r.status);
+  }
+  return r.blob();
+}
+
+/** GET plain text (handover report, venue file). */
+export async function getText(path: string): Promise<string> {
+  return (await getBlob(path)).text();
+}
+
+/** Saves a reply as a file in the browser's downloads. */
+export async function download(path: string, name: string) {
+  saveBlob(await getBlob(path), name);
+}
+
+export function saveBlob(b: Blob, name: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+}
+
+/** Opens a printable page (report, QR codes) in a new tab; the page needs the sign-in, so it is fetched first. */
+export async function openPage(path: string) {
+  const w = window.open('', '_blank');
+  const html = await (await getBlob(path)).text();
+  const u = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  if (w) w.location.href = u; else location.href = u;
+}

@@ -5,6 +5,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { pref } from './api/client';
+import { arMore } from './ar';
 
 const ar: Record<string, string> = {
   // sign in and header
@@ -154,7 +155,7 @@ const ar: Record<string, string> = {
 };
 
 i18n.use(initReactI18next).init({
-  resources: { en: { translation: {} }, ar: { translation: ar } },
+  resources: { en: { translation: {} }, ar: { translation: { ...ar, ...arMore } } },
   lng: pref('lang') === 'ar' ? 'ar' : 'en',
   fallbackLng: 'en',
   keySeparator: false,

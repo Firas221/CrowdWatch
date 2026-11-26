@@ -6,12 +6,12 @@ import { prefixer } from 'stylis';
 import rtlPlugin from 'stylis-plugin-rtl';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { authHeaders, currentSession, pref, setPref, useSession, whenSignedOut, type Session } from './api/client';
+import { authHeaders, can, currentSession, pref, setPref, useSession, whenSignedOut, type Session } from './api/client';
 import { LiveContext, useLive } from './api/live';
 import type { Me } from './api/types';
 import { Login } from './components/Login';
 import { IncidentPanel } from './components/IncidentPanel';
-import { ModeContext, Shell, type View } from './components/Shell';
+import { ModeContext, Shell, VIEWS, type View } from './components/Shell';
 import { ToastProvider, useToast } from './components/ui';
 import { makeTheme } from './theme';
 import { Alerts } from './views/Alerts';
@@ -19,10 +19,16 @@ import { Areas } from './views/Areas';
 import { Incidents } from './views/Incidents';
 import { Overview } from './views/Overview';
 import { Units } from './views/Units';
+import { Lost } from './views/Lost';
+import { Emergency } from './views/Emergency';
+import { Reports } from './views/Reports';
+import { Replay } from './views/Replay';
+import { Sites } from './views/Sites';
+import { Editor } from './views/Editor';
+import { Settings } from './views/Settings';
 
 const ltrCache = createCache({ key: 'cw' });
 const rtlCache = createCache({ key: 'cwrtl', stylisPlugins: [prefixer, rtlPlugin] });
-const VIEWS: View[] = ['overview', 'areas', 'incidents', 'units', 'alerts'];
 
 export function App() {
   const { i18n } = useTranslation();
@@ -84,7 +90,9 @@ function Console() {
 
 function SignedIn({ session, onSignOut }: { session: Session; onSignOut: (why: string) => void }) {
   const live = useLive(session, onSignOut);
-  const [view, setViewState] = useState<View>(() => (VIEWS.includes(pref('view2') as View) ? (pref('view2') as View) : 'overview'));
+  // the view shown last in this browser, unless this user may not see it
+  const allowed = (v: View) => VIEWS.includes(v) && (v !== 'reports' || can('OFFICER')) && (v !== 'editor' || can('ADMIN'));
+  const [view, setViewState] = useState<View>(() => (allowed(pref('view2') as View) ? (pref('view2') as View) : 'overview'));
   const [incident, setIncident] = useState<number | null>(null);
   const setView = (v: View) => { setPref('view2', v); setViewState(v); };
   return (
@@ -94,7 +102,14 @@ function SignedIn({ session, onSignOut }: { session: Session; onSignOut: (why: s
         {view === 'areas' && <Areas />}
         {view === 'incidents' && <Incidents onIncident={setIncident} />}
         {view === 'units' && <Units onIncident={setIncident} />}
+        {view === 'lost' && <Lost onIncident={setIncident} />}
+        {view === 'emergency' && <Emergency />}
         {view === 'alerts' && <Alerts />}
+        {view === 'reports' && <Reports />}
+        {view === 'replay' && <Replay />}
+        {view === 'sites' && <Sites />}
+        {view === 'editor' && <Editor />}
+        {view === 'settings' && <Settings onSignOut={() => onSignOut('')} />}
       </Shell>
       <Drawer anchor="right" open={incident != null} onClose={() => setIncident(null)} sx={{ zIndex: (th) => th.zIndex.modal }}>
         {incident != null && <IncidentPanel id={incident} onClose={() => setIncident(null)} />}
